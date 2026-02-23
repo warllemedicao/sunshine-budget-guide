@@ -1,38 +1,46 @@
 import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import MonthSelector from "@/components/MonthSelector";
 import NovoLancamentoModal from "@/components/NovoLancamentoModal";
 import { formatCurrency } from "@/lib/formatters";
 import { getCategoriaInfo } from "@/lib/categories";
-import { TrendingUp, TrendingDown, CreditCard, ShoppingBag } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import {
+  TrendingUp, TrendingDown, CreditCard, ShoppingBag,
+  ChevronDown, ChevronUp, Plus, Trash2, Edit2, Check, Undo2,
+} from "lucide-react";
 import type { Tables } from "@/integrations/supabase/types";
+import { cn } from "@/lib/utils";
 
 const Dashboard = () => {
   const { user } = useAuth();
+  const { toast } = useToast();
+  const qc = useQueryClient();
   const now = new Date();
   const [mes, setMes] = useState(now.getMonth());
   const [ano, setAno] = useState(now.getFullYear());
   const [editItem, setEditItem] = useState<Tables<"lancamentos"> | null>(null);
   const [showEdit, setShowEdit] = useState(false);
+  const [expandedCard, setExpandedCard] = useState<string | null>(null);
+  const [showPagarModal, setShowPagarModal] = useState(false);
+  const [pagarCartaoId, setPagarCartaoId] = useState<string | null>(null);
 
   const startDate = `${ano}-${String(mes + 1).padStart(2, "0")}-01`;
-  const endDate = mes === 11
-    ? `${ano + 1}-01-01`
-    : `${ano}-${String(mes + 2).padStart(2, "0")}-01`;
+  const endDate = mes === 11 ? `${ano + 1}-01-01` : `${ano}-${String(mes + 2).padStart(2, "0")}-01`;
 
   const { data: lancamentos = [] } = useQuery({
     queryKey: ["lancamentos", user?.id, mes, ano],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("lancamentos")
-        .select("*")
-        .eq("user_id", user!.id)
-        .gte("data", startDate)
-        .lt("data", endDate)
+      const { data, error } = await supabase.from("lancamentos").select("*")
+        .eq("user_id", user!.id).gte("data", startDate).lt("data", endDate)
         .order("data", { ascending: false });
       if (error) throw error;
       return data;
@@ -43,8 +51,7 @@ const Dashboard = () => {
   const { data: cartoes = [] } = useQuery({
     queryKey: ["cartoes", user?.id],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("cartoes").select("*").eq("user_id", user!.id);
+      const { data, error } = await supabase.from("cartoes").select("*").eq("user_id", user!.id);
       if (error) throw error;
       return data;
     },
@@ -54,8 +61,7 @@ const Dashboard = () => {
   const { data: faturas = [] } = useQuery({
     queryKey: ["faturas", user?.id, mes, ano],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("faturas").select("*").eq("user_id", user!.id)
+      const { data, error } = await supabase.from("faturas").select("*").eq("user_id", user!.id)
         .eq("mes", mes + 1).eq("ano", ano);
       if (error) throw error;
       return data;
@@ -72,48 +78,78 @@ const Dashboard = () => {
     const fixasDespesa = despesas.filter((l) => l.fixo && l.metodo === "avista");
     const cartaoLanc = despesas.filter((l) => l.metodo === "cartao");
     const variaveis = despesas.filter((l) => !l.fixo && l.metodo === "avista");
-
     return { totalReceita, totalDespesa, fixasReceita, fixasDespesa, cartaoLanc, variaveis };
   }, [lancamentos]);
 
   const saldo = stats.totalReceita - stats.totalDespesa;
   const pctGasto = stats.totalReceita > 0
-    ? Math.min(100, Math.round((stats.totalDespesa / stats.totalReceita) * 100))
-    : 0;
+    ? Math.min(100, Math.round((stats.totalDespesa / stats.totalReceita) * 100)) : 0;
 
   const openEdit = (item: Tables<"lancamentos">) => {
     setEditItem(item);
     setShowEdit(true);
   };
 
-  // Group card expenses by card
+  // Group card expenses by card, including cards with no expenses
   const cartaoGroups = useMemo(() => {
-    const groups = new Map<string, { cartao: Tables<"cartoes">; total: number; pago: boolean }>();
+    const groups = new Map<string, { cartao: Tables<"cartoes">; total: number; pago: boolean; fatura: Tables<"faturas"> | null; compras: Tables<"lancamentos">[] }>();
+
+    // Init all cards
+    cartoes.forEach((c) => {
+      const fatura = faturas.find((f) => f.cartao_id === c.id);
+      groups.set(c.id, { cartao: c, total: 0, pago: fatura?.pago ?? false, fatura: fatura ?? null, compras: [] });
+    });
+
     stats.cartaoLanc.forEach((l) => {
       if (!l.cartao_id) return;
-      const existing = groups.get(l.cartao_id);
-      if (existing) {
-        existing.total += l.valor;
-      } else {
-        const cartao = cartoes.find((c) => c.id === l.cartao_id);
-        if (cartao) {
-          const fatura = faturas.find((f) => f.cartao_id === l.cartao_id);
-          groups.set(l.cartao_id, { cartao, total: l.valor, pago: fatura?.pago ?? false });
-        }
+      const g = groups.get(l.cartao_id);
+      if (g) {
+        g.total += l.valor;
+        g.compras.push(l);
       }
     });
+
     return Array.from(groups.values());
   }, [stats.cartaoLanc, cartoes, faturas]);
 
+  const deleteLancamento = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from("lancamentos").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["lancamentos"] });
+      toast({ title: "Compra removida!" });
+    },
+  });
+
+  const togglePago = useMutation({
+    mutationFn: async ({ cartaoId, pago }: { cartaoId: string; pago: boolean }) => {
+      const fatura = faturas.find((f) => f.cartao_id === cartaoId);
+      if (pago) {
+        // Undo payment
+        if (fatura) {
+          const { error } = await supabase.from("faturas").update({ pago: false, valor_pago: null, data_pagamento: null }).eq("id", fatura.id);
+          if (error) throw error;
+        }
+      } else {
+        // Open pay modal
+        setPagarCartaoId(cartaoId);
+        setShowPagarModal(true);
+      }
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["faturas"] }),
+  });
+
   return (
     <div className="mx-auto max-w-lg space-y-5 p-4">
-      <MonthSelector mes={mes} ano={ano} onChange={(m, a) => { setMes(m); setAno(a); }} />
+      <MonthSelector mes={mes} ano={ano} onChange={(m, a) => { setMes(m); setAno(a); setExpandedCard(null); }} />
 
       {/* Saldo */}
-      <Card className="overflow-hidden">
+      <Card>
         <CardContent className="p-5">
           <p className="text-sm text-muted-foreground">Saldo disponível</p>
-          <p className={`text-3xl font-bold ${saldo >= 0 ? "text-success" : "text-destructive"}`}>
+          <p className={cn("text-3xl font-bold", saldo >= 0 ? "text-success" : "text-destructive")}>
             {formatCurrency(saldo)}
           </p>
           <div className="mt-3 flex items-center justify-between text-sm">
@@ -133,34 +169,153 @@ const Dashboard = () => {
         </Section>
       )}
 
-      {/* Saídas Fixas */}
-      {stats.fixasDespesa.length > 0 && (
-        <Section title="Saídas Fixas" icon={<TrendingDown className="h-4 w-4 text-destructive" />}>
+      {/* Grid: Saídas Fixas + Cartões lado a lado */}
+      <div className="grid grid-cols-2 gap-3">
+        {/* Saídas Fixas */}
+        <div className="space-y-2">
+          <div className="flex items-center gap-1.5">
+            <TrendingDown className="h-3.5 w-3.5 text-destructive" />
+            <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Saídas Fixas</h3>
+          </div>
+          {stats.fixasDespesa.length === 0 && (
+            <p className="text-xs text-muted-foreground">Nenhuma</p>
+          )}
           {stats.fixasDespesa.map((l) => (
-            <LancamentoRow key={l.id} item={l} onClick={() => openEdit(l)} />
+            <MiniLancamentoRow key={l.id} item={l} onClick={() => openEdit(l)} />
           ))}
-        </Section>
-      )}
-
-      {/* Cartões */}
-      {cartaoGroups.length > 0 && (
-        <Section title="Cartões / Extras" icon={<CreditCard className="h-4 w-4 text-primary" />}>
-          {cartaoGroups.map(({ cartao, total, pago }) => (
-            <div key={cartao.id} className="flex items-center justify-between rounded-lg bg-secondary p-3">
-              <div>
-                <p className="text-sm font-medium">{cartao.instituicao} •••• {cartao.final_cartao}</p>
-                <p className="text-xs text-muted-foreground">Venc. dia {cartao.dia_vencimento}</p>
-              </div>
-              <div className="text-right">
-                <p className="text-sm font-semibold">{formatCurrency(total)}</p>
-                <span className={`text-xs ${pago ? "text-success" : "text-warning"}`}>
-                  {pago ? "Pago" : "Pendente"}
-                </span>
-              </div>
+          {stats.fixasDespesa.length > 0 && (
+            <div className="rounded-lg bg-destructive/10 px-2 py-1.5 text-center">
+              <p className="text-xs font-semibold text-destructive">
+                Total: {formatCurrency(stats.fixasDespesa.reduce((s, l) => s + l.valor, 0))}
+              </p>
             </div>
+          )}
+        </div>
+
+        {/* Cartões resumido */}
+        <div className="space-y-2">
+          <div className="flex items-center gap-1.5">
+            <CreditCard className="h-3.5 w-3.5 text-primary" />
+            <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Cartões</h3>
+          </div>
+          {cartaoGroups.length === 0 && (
+            <p className="text-xs text-muted-foreground">Nenhum cartão</p>
+          )}
+          {cartaoGroups.map(({ cartao, total, pago }) => (
+            <button
+              key={cartao.id}
+              onClick={() => setExpandedCard(expandedCard === cartao.id ? null : cartao.id)}
+              className="w-full rounded-lg bg-card border border-border p-2 text-left hover:shadow-sm transition-shadow"
+            >
+              <p className="text-xs font-medium truncate">{cartao.instituicao}</p>
+              <p className="text-sm font-semibold">{formatCurrency(total)}</p>
+              <div className="flex items-center justify-between mt-1">
+                <span className={cn("text-[10px]", pago ? "text-success" : "text-warning")}>
+                  {pago ? "✓ Pago" : "Pendente"}
+                </span>
+                {expandedCard === cartao.id ? (
+                  <ChevronUp className="h-3 w-3 text-muted-foreground" />
+                ) : (
+                  <ChevronDown className="h-3 w-3 text-muted-foreground" />
+                )}
+              </div>
+            </button>
           ))}
-        </Section>
-      )}
+        </div>
+      </div>
+
+      {/* Fatura expandida - compras do cartão selecionado */}
+      {expandedCard && (() => {
+        const group = cartaoGroups.find((g) => g.cartao.id === expandedCard);
+        if (!group) return null;
+        return (
+          <Card className="border-primary/30">
+            <CardContent className="p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold">{group.cartao.instituicao} •••• {group.cartao.final_cartao}</p>
+                  <p className="text-xs text-muted-foreground">Fech. dia {group.cartao.dia_fechamento} · Venc. dia {group.cartao.dia_vencimento}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-lg font-bold">{formatCurrency(group.total)}</p>
+                  <span className={cn("text-xs", group.pago ? "text-success" : "text-warning")}>
+                    {group.pago ? "Pago" : "Pendente"}
+                  </span>
+                </div>
+              </div>
+
+              {/* Lista de compras */}
+              <div className="space-y-1.5">
+                <p className="text-xs font-semibold text-muted-foreground uppercase">Compras ({group.compras.length})</p>
+                {group.compras.length === 0 && (
+                  <p className="text-xs text-muted-foreground">Nenhuma compra neste mês.</p>
+                )}
+                {group.compras.map((l) => {
+                  const cat = getCategoriaInfo(l.categoria);
+                  const Icon = cat.icon;
+                  return (
+                    <div key={l.id} className="flex items-center gap-2 rounded-md bg-secondary p-2">
+                      <div className="flex h-7 w-7 items-center justify-center rounded-md" style={{ backgroundColor: cat.color + "20" }}>
+                        <Icon className="h-3.5 w-3.5" style={{ color: cat.color }} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium truncate">{l.descricao}</p>
+                        <p className="text-[10px] text-muted-foreground">
+                          {cat.label}
+                          {l.parcela_atual && l.total_parcelas ? ` · ${l.parcela_atual}/${l.total_parcelas}` : ""}
+                          {l.loja ? ` · ${l.loja}` : ""}
+                        </p>
+                      </div>
+                      <p className="text-xs font-semibold">{formatCurrency(l.valor)}</p>
+                      <div className="flex gap-0.5">
+                        <button onClick={() => openEdit(l)} className="p-1 text-muted-foreground hover:text-foreground">
+                          <Edit2 className="h-3 w-3" />
+                        </button>
+                        <button onClick={() => deleteLancamento.mutate(l.id)} className="p-1 text-muted-foreground hover:text-destructive">
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Ações da fatura */}
+              <div className="flex gap-2 pt-1">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="flex-1 text-xs"
+                  onClick={() => {
+                    setEditItem(null);
+                    setShowEdit(true);
+                  }}
+                >
+                  <Plus className="h-3 w-3 mr-1" /> Compra
+                </Button>
+                {group.pago ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="flex-1 text-xs"
+                    onClick={() => togglePago.mutate({ cartaoId: group.cartao.id, pago: true })}
+                  >
+                    <Undo2 className="h-3 w-3 mr-1" /> Desfazer Pgto
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    className="flex-1 text-xs"
+                    onClick={() => togglePago.mutate({ cartaoId: group.cartao.id, pago: false })}
+                  >
+                    <Check className="h-3 w-3 mr-1" /> Pagar Fatura
+                  </Button>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })()}
 
       {/* Variáveis */}
       {stats.variaveis.length > 0 && (
@@ -171,7 +326,7 @@ const Dashboard = () => {
         </Section>
       )}
 
-      {lancamentos.length === 0 && (
+      {lancamentos.length === 0 && cartaoGroups.length === 0 && (
         <div className="py-12 text-center text-muted-foreground">
           <p>Nenhum lançamento neste mês.</p>
           <p className="text-sm">Toque no + para adicionar.</p>
@@ -179,9 +334,23 @@ const Dashboard = () => {
       )}
 
       <NovoLancamentoModal open={showEdit} onOpenChange={setShowEdit} editItem={editItem} />
+
+      {/* Modal Pagar Fatura */}
+      <PagarFaturaModal
+        open={showPagarModal}
+        onOpenChange={setShowPagarModal}
+        cartaoId={pagarCartaoId}
+        userId={user?.id || ""}
+        mes={mes + 1}
+        ano={ano}
+        valorTotal={cartaoGroups.find((g) => g.cartao.id === pagarCartaoId)?.total ?? 0}
+        faturaExistente={faturas.find((f) => f.cartao_id === pagarCartaoId) ?? null}
+      />
     </div>
   );
 };
+
+/* ---- Sub-components ---- */
 
 const Section = ({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) => (
   <div className="space-y-2">
@@ -205,10 +374,104 @@ const LancamentoRow = ({ item, onClick }: { item: Tables<"lancamentos">; onClick
         <p className="text-sm font-medium truncate">{item.descricao}</p>
         <p className="text-xs text-muted-foreground">{cat.label}{item.loja ? ` · ${item.loja}` : ""}</p>
       </div>
-      <p className={`text-sm font-semibold ${item.tipo === "receita" ? "text-success" : "text-foreground"}`}>
+      <p className={cn("text-sm font-semibold", item.tipo === "receita" ? "text-success" : "text-foreground")}>
         {item.tipo === "receita" ? "+" : "-"}{formatCurrency(item.valor)}
       </p>
     </button>
+  );
+};
+
+const MiniLancamentoRow = ({ item, onClick }: { item: Tables<"lancamentos">; onClick: () => void }) => {
+  const cat = getCategoriaInfo(item.categoria);
+  const Icon = cat.icon;
+  return (
+    <button onClick={onClick} className="flex w-full items-center gap-2 rounded-lg bg-card p-2 text-left border border-border hover:shadow-sm transition-shadow">
+      <div className="flex h-6 w-6 items-center justify-center rounded-md" style={{ backgroundColor: cat.color + "20" }}>
+        <Icon className="h-3 w-3" style={{ color: cat.color }} />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-xs font-medium truncate">{item.descricao}</p>
+      </div>
+      <p className="text-xs font-semibold">{formatCurrency(item.valor)}</p>
+    </button>
+  );
+};
+
+/* ---- Pagar Fatura Modal ---- */
+
+interface PagarFaturaModalProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  cartaoId: string | null;
+  userId: string;
+  mes: number;
+  ano: number;
+  valorTotal: number;
+  faturaExistente: Tables<"faturas"> | null;
+}
+
+const PagarFaturaModal = ({ open, onOpenChange, cartaoId, userId, mes, ano, valorTotal, faturaExistente }: PagarFaturaModalProps) => {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [valorPago, setValorPago] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const handlePagar = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!cartaoId) return;
+    setLoading(true);
+    try {
+      const valor = parseFloat(valorPago) || valorTotal;
+      if (faturaExistente) {
+        const { error } = await supabase.from("faturas")
+          .update({ pago: true, valor_pago: valor, data_pagamento: new Date().toISOString().split("T")[0] })
+          .eq("id", faturaExistente.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from("faturas").insert({
+          user_id: userId, cartao_id: cartaoId, mes, ano,
+          pago: true, valor_pago: valor, data_pagamento: new Date().toISOString().split("T")[0],
+        });
+        if (error) throw error;
+      }
+      qc.invalidateQueries({ queryKey: ["faturas"] });
+      toast({ title: "Fatura paga!" });
+      onOpenChange(false);
+    } catch (err: any) {
+      toast({ title: "Erro", description: err.message, variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Pagar Fatura</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handlePagar} className="space-y-4">
+          <div className="rounded-lg bg-secondary p-3 text-center">
+            <p className="text-sm text-muted-foreground">Valor da fatura</p>
+            <p className="text-2xl font-bold">{formatCurrency(valorTotal)}</p>
+          </div>
+          <div className="space-y-2">
+            <Label>Valor efetivo pago (R$)</Label>
+            <Input
+              type="number"
+              step="0.01"
+              placeholder={String(valorTotal)}
+              value={valorPago}
+              onChange={(e) => setValorPago(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">Deixe em branco para usar o valor da fatura</p>
+          </div>
+          <Button type="submit" className="w-full" disabled={loading}>
+            {loading ? "Processando..." : "Confirmar Pagamento"}
+          </Button>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 };
 
