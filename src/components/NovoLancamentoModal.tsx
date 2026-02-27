@@ -38,6 +38,27 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem }: Props) => {
   const [loja, setLoja] = useState("");
   const [cartoes, setCartoes] = useState<Tables<"cartoes">[]>([]);
   const [loading, setLoading] = useState(false);
+    // Estados para comprovante
+  const [receiptPath, setReceiptPath] = useState<string>('');
+  const [receiptFileName, setReceiptFileName] = useState<string>('');
+  const [existingReceipts, setExistingReceipts] = useState<any[]>([]);
+  const { fetchReceiptsForTransaction } = useReceipts();
+    // Carregar comprovantes existentes quando abrir o modal
+  useEffect(() => {
+    if (editItem?.id) {
+      loadExistingReceipts(editItem.id);
+    } else {
+      // Se for novo lançamento, limpar os estados
+      setReceiptPath('');
+      setReceiptFileName('');
+      setExistingReceipts([]);
+    }
+  }, [editItem?.id, open]);
+
+  const loadExistingReceipts = async (transactionId: string) => {
+    const receipts = await fetchReceiptsForTransaction(transactionId);
+    setExistingReceipts(receipts);
+  };
 
   useEffect(() => {
     if (!user || !open) return;
@@ -254,6 +275,46 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem }: Props) => {
                 Excluir
               </Button>
             )}
+                  {/* SEÇÃO DE COMPROVANTE */}
+      <div className="border-t pt-4 mt-4">
+        <h3 className="font-semibold mb-3 text-sm">📎 Comprovante</h3>
+        
+        {/* Mostrar comprovantes existentes */}
+        {existingReceipts.length > 0 && (
+          <div className="mb-4 space-y-2">
+            <p className="text-xs text-gray-600">Comprovantes já salvos:</p>
+            {existingReceipts.map((receipt) => (
+              <ReceiptViewer
+                key={receipt.id}
+                filePath={receipt.file_path}
+                fileName={receipt.file_name}
+                receiptId={receipt.id}
+                onDelete={() => {
+                  setExistingReceipts(
+                    existingReceipts.filter((r) => r.id !== receipt.id)
+                  );
+                }}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* Adicionar novo comprovante */}
+        {receiptPath ? (
+          <ReceiptViewer
+            filePath={receiptPath}
+            fileName={receiptFileName}
+          />
+        ) : (
+          <ReceiptUploadButton
+            transactionId={editItem?.id || 'novo'}
+            onUploadSuccess={(path, fileName) => {
+              setReceiptPath(path);
+              setReceiptFileName(fileName);
+            }}
+          />
+        )}
+      </div>
             <Button type="submit" className="flex-1" disabled={loading}>
               {loading ? "Salvando..." : editItem ? "Atualizar" : "Adicionar"}
             </Button>
