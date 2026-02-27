@@ -17,6 +17,8 @@ import {
   TrendingUp, TrendingDown, CreditCard, ShoppingBag,
   ChevronDown, ChevronUp, Plus, Trash2, Edit2, Check, Undo2,
 } from "lucide-react";
+import { ReceiptUploadButton } from '@/components/ReceiptUploadButton';
+import { ReceiptViewer } from '@/components/ReceiptViewer';
 import type { Tables } from "@/integrations/supabase/types";
 import { cn } from "@/lib/utils";
 
@@ -415,6 +417,8 @@ const PagarFaturaModal = ({ open, onOpenChange, cartaoId, userId, mes, ano, valo
   const qc = useQueryClient();
   const [valorPago, setValorPago] = useState("");
   const [loading, setLoading] = useState(false);
+  const [receiptPath, setReceiptPath] = useState<string>('');
+  const [receiptFileName, setReceiptFileName] = useState<string>('');
 
   const handlePagar = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -466,6 +470,25 @@ const PagarFaturaModal = ({ open, onOpenChange, cartaoId, userId, mes, ano, valo
             />
             <p className="text-xs text-muted-foreground">Deixe em branco para usar o valor da fatura</p>
           </div>
+                     {/* SEÇÃO DE COMPROVANTE DO PAGAMENTO */}
+           <div className="border-t pt-4">
+             <h4 className="font-semibold text-sm mb-3">📸 Comprovante do Pagamento</h4>
+             
+             {receiptPath ? (
+               <ReceiptViewer
+                 filePath={receiptPath}
+                 fileName={receiptFileName}
+               />
+             ) : (
+               <ReceiptUploadButton
+                 transactionId={`payment_${cartaoId}_${mes}_${ano}`}
+                 onUploadSuccess={(path, fileName) => {
+                   setReceiptPath(path);
+                   setReceiptFileName(fileName);
+                 }}
+               />
+             )}
+           </div>
           <Button type="submit" className="w-full" disabled={loading}>
             {loading ? "Processando..." : "Confirmar Pagamento"}
           </Button>
