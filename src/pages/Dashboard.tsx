@@ -52,7 +52,7 @@ const Dashboard = () => {
     enabled: !!user,
   });
 
-  const { data: cartoes = [] } = useQuery({
+  const { data: cartoes = [], isSuccess: cartoesLoaded } = useQuery({
     queryKey: ["cartoes", user?.id],
     queryFn: async () => {
       const { data, error } = await supabase.from("cartoes").select("*").eq("user_id", user!.id);
@@ -80,10 +80,16 @@ const Dashboard = () => {
     const totalDespesa = despesas.reduce((s, l) => s + l.valor, 0);
     const fixasReceita = receitas.filter((l) => l.fixo);
     const fixasDespesa = despesas.filter((l) => l.fixo && l.metodo === "avista");
-    const cartaoLanc = despesas.filter((l) => l.metodo === "cartao");
+    const cartaoIds = new Set(cartoes.map((c) => c.id));
+    // Only include card expenses that are linked to an existing card
+    const cartaoLanc = despesas.filter((l) => l.metodo === "cartao" && !!l.cartao_id && cartaoIds.has(l.cartao_id));
     const variaveis = despesas.filter((l) => !l.fixo && l.metodo === "avista");
-    return { totalReceita, totalDespesa, fixasReceita, fixasDespesa, cartaoLanc, variaveis };
-  }, [lancamentos]);
+    // Orphaned: metodo=cartao but no valid card → invisible and causes ghost balance reduction
+    const orfaos = cartoesLoaded
+      ? despesas.filter((l) => l.metodo === "cartao" && (!l.cartao_id || !cartaoIds.has(l.cartao_id)))
+      : [];
+    return { totalReceita, totalDespesa, fixasReceita, fixasDespesa, cartaoLanc, variaveis, orfaos };
+  }, [lancamentos, cartoes, cartoesLoaded]);
 
   const saldo = stats.totalReceita - stats.totalDespesa;
   const pctGasto = stats.totalReceita > 0
@@ -325,6 +331,24 @@ const Dashboard = () => {
           </Card>
         );
       })()}
+
+      {/* Despesas órfãs — card expenses with no valid card (ghost expenses) */}
+      {stats.orfaos.length > 0 && (
+        <div className="rounded-lg border border-destructive/50 bg-destructive/5 p-3 space-y-2">
+          <div className="flex items-center gap-2">
+            <span className="text-destructive">⚠️</span>
+            <p className="text-xs font-semibold text-destructive">Lançamentos sem cartão associado</p>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Estes lançamentos estão afetando o saldo mas não estão vinculados a nenhum cartão. Toque em um para editar ou excluir.
+          </p>
+          <div className="space-y-2">
+            {stats.orfaos.map((l) => (
+              <LancamentoRow key={l.id} item={l} onClick={() => openEdit(l)} />
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Variáveis */}
       {stats.variaveis.length > 0 && (

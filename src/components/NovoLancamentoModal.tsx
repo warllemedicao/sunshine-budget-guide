@@ -85,6 +85,12 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem }: Props) => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
+
+    if (metodo === "cartao" && !cartaoId) {
+      toast({ title: "Selecione um cartão", description: "É necessário selecionar um cartão para lançamentos no cartão.", variant: "destructive" });
+      return;
+    }
+
     setLoading(true);
 
     try {
