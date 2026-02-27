@@ -39,6 +39,57 @@ const Dashboard = () => {
   const [receiptLancamento, setReceiptLancamento] = useState<Tables<"lancamentos"> | null>(null);
   const [showPagarFixaModal, setShowPagarFixaModal] = useState(false);
   const [pagarFixaItem, setPagarFixaItem] = useState<Tables<"lancamentos"> | null>(null);
+  // Share target: file/text received from OS share sheet (e.g. receipt from banking app)
+  const [shareFile, setShareFile] = useState<File | null>(null);
+  const [shareText, setShareText] = useState("");
+
+  // Detect incoming share (?share=1 injected by the service worker after the OS share)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (!params.has("share")) return;
+    // Clean the URL immediately so a reload doesn't re-trigger
+    window.history.replaceState({}, "", "/");
+
+    (async () => {
+      let file: File | null = null;
+      let text = "";
+      try {
+        const [metaRes, fileRes] = await Promise.all([
+          fetch("/_share/meta"),
+          fetch("/_share/file"),
+        ]);
+        if (metaRes.ok) {
+          const meta = await metaRes.json();
+          text = meta.text ?? "";
+        }
+        if (fileRes.ok && fileRes.status !== 404) {
+          const blob = await fileRes.blob();
+          if (blob.size > 0) {
+            const rawName = decodeURIComponent(fileRes.headers.get("X-File-Name") ?? "");
+            // Build a safe filename with extension if the raw name has none
+            let name = rawName;
+            if (!name || !name.includes(".")) {
+              const ext = blob.type === "application/pdf" ? ".pdf"
+                : blob.type.startsWith("image/") ? "." + blob.type.split("/")[1]
+                : ".bin";
+              name = (rawName || "comprovante") + ext;
+            }
+            file = new File([blob], name, { type: blob.type });
+          }
+        }
+      } catch { /* SW not active or no pending share */ }
+      // Clear the cached share data from the service worker
+      try { await fetch("/_share/clear", { method: "POST" }); } catch { /* ignore */ }
+
+      if (file || text) {
+        setShareFile(file);
+        setShareText(text);
+        setEditItem(null);
+        setShowEdit(true);
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const startDate = `${ano}-${String(mes + 1).padStart(2, "0")}-01`;
   const endDate = mes === 11 ? `${ano + 1}-01-01` : `${ano}-${String(mes + 2).padStart(2, "0")}-01`;
@@ -395,7 +446,16 @@ const Dashboard = () => {
         </div>
       )}
 
-      <NovoLancamentoModal open={showEdit} onOpenChange={setShowEdit} editItem={editItem} />
+      <NovoLancamentoModal
+        open={showEdit}
+        onOpenChange={(v) => {
+          setShowEdit(v);
+          if (!v) { setShareFile(null); setShareText(""); }
+        }}
+        editItem={editItem}
+        initialFile={shareFile}
+        initialText={shareText}
+      />
 
       {/* Modal Pagar Despesa Fixa */}
       <PagarDespesaFixaModal

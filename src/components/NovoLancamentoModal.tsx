@@ -17,17 +17,23 @@ import { ReceiptUploadButton } from '@/components/ReceiptUploadButton';
 import { ReceiptViewer } from '@/components/ReceiptViewer';
 import { LogoImage } from "@/lib/logos";
 import { parseBankNotification } from "@/lib/notificationParser";
+import { useReceipts } from "@/hooks/useReceipts";
 import { Smartphone, X } from "lucide-react";
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   editItem?: Tables<"lancamentos"> | null;
+  /** File received via OS share sheet (e.g. receipt from a banking app) */
+  initialFile?: File | null;
+  /** Bank notification text to pre-parse (SMS, push notification, etc.) */
+  initialText?: string;
 }
 
-const NovoLancamentoModal = ({ open, onOpenChange, editItem }: Props) => {
+const NovoLancamentoModal = ({ open, onOpenChange, editItem, initialFile, initialText }: Props) => {
   const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { uploadReceipt } = useReceipts();
 
   const [tipo, setTipo] = useState<"receita" | "despesa">("despesa");
   const [descricao, setDescricao] = useState("");
@@ -71,8 +77,32 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem }: Props) => {
       setReceiptFileName(editItem.comprovante_url ? "Comprovante" : "");
     } else {
       resetForm();
+      // Pre-fill from a shared bank notification text (SMS, push, etc.)
+      if (initialText) {
+        const parsed = parseBankNotification(initialText);
+        if (parsed.valor) setValor(String(parsed.valor));
+        if (parsed.loja) setLoja(parsed.loja);
+        if (parsed.descricao) setDescricao(parsed.descricao);
+      }
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editItem, open]);
+
+  // Auto-upload a file shared via the OS share sheet
+  useEffect(() => {
+    if (!open || !initialFile || editItem || !user) return;
+    let cancelled = false;
+    uploadReceipt(initialFile, user.id).then((path) => {
+      if (cancelled || !path) return;
+      setReceiptPath(path);
+      setReceiptFileName(initialFile.name);
+    }).catch(() => {
+      if (cancelled) return;
+      toast({ title: "Erro ao enviar comprovante", description: "O arquivo compartilhado não pôde ser enviado. Tente anexá-lo manualmente.", variant: "destructive" });
+    });
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, initialFile, editItem?.id, user?.id]);
 
   const resetForm = () => {
     setTipo("despesa");
