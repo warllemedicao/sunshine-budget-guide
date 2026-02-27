@@ -118,6 +118,7 @@ export type Database = {
           id: string
           loja: string | null
           metodo: string
+          pago: boolean
           parcela_atual: number | null
           parcela_grupo_id: string | null
           tipo: string
@@ -137,6 +138,7 @@ export type Database = {
           id?: string
           loja?: string | null
           metodo?: string
+          pago?: boolean
           parcela_atual?: number | null
           parcela_grupo_id?: string | null
           tipo?: string
@@ -156,6 +158,7 @@ export type Database = {
           id?: string
           loja?: string | null
           metodo?: string
+          pago?: boolean
           parcela_atual?: number | null
           parcela_grupo_id?: string | null
           tipo?: string

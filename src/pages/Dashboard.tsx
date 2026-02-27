@@ -15,12 +15,13 @@ import { getCategoriaInfo } from "@/lib/categories";
 import { useToast } from "@/hooks/use-toast";
 import {
   TrendingUp, TrendingDown, CreditCard, ShoppingBag,
-  ChevronDown, ChevronUp, Plus, Trash2, Edit2, Check, Undo2, Paperclip,
+  ChevronDown, ChevronUp, Plus, Trash2, Edit2, Check, Undo2, Paperclip, Banknote,
 } from "lucide-react";
 import { ReceiptUploadButton } from '@/components/ReceiptUploadButton';
 import { ReceiptViewer } from '@/components/ReceiptViewer';
 import type { Tables } from "@/integrations/supabase/types";
 import { cn } from "@/lib/utils";
+import { LogoImage } from "@/lib/logos";
 
 const Dashboard = () => {
   const { user } = useAuth();
@@ -36,6 +37,8 @@ const Dashboard = () => {
   const [pagarCartaoId, setPagarCartaoId] = useState<string | null>(null);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [receiptLancamento, setReceiptLancamento] = useState<Tables<"lancamentos"> | null>(null);
+  const [showPagarFixaModal, setShowPagarFixaModal] = useState(false);
+  const [pagarFixaItem, setPagarFixaItem] = useState<Tables<"lancamentos"> | null>(null);
 
   const startDate = `${ano}-${String(mes + 1).padStart(2, "0")}-01`;
   const endDate = mes === 11 ? `${ano + 1}-01-01` : `${ano}-${String(mes + 2).padStart(2, "0")}-01`;
@@ -151,6 +154,17 @@ const Dashboard = () => {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["faturas"] }),
   });
 
+  const pagarDespesaFixa = useMutation({
+    mutationFn: async ({ id, pago }: { id: string; pago: boolean }) => {
+      const { error } = await supabase.from("lancamentos").update({ pago }).eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: (_, { pago }) => {
+      qc.invalidateQueries({ queryKey: ["lancamentos"] });
+      toast({ title: pago ? "✅ Despesa marcada como paga!" : "Pagamento desfeito." });
+    },
+  });
+
   return (
     <div className="mx-auto max-w-lg space-y-5 p-4">
       <MonthSelector mes={mes} ano={ano} onChange={(m, a) => { setMes(m); setAno(a); setExpandedCard(null); }} />
@@ -196,6 +210,15 @@ const Dashboard = () => {
               item={l}
               onClick={() => openEdit(l)}
               onReceiptClick={() => { setReceiptLancamento(l); setShowReceiptModal(true); }}
+              onPagar={() => {
+                if (l.pago) {
+                  // Undo is immediate; paying shows a confirmation dialog first
+                  pagarDespesaFixa.mutate({ id: l.id, pago: false });
+                } else {
+                  setPagarFixaItem(l);
+                  setShowPagarFixaModal(true);
+                }
+              }}
             />
           ))}
           {stats.fixasDespesa.length > 0 && (
@@ -222,7 +245,10 @@ const Dashboard = () => {
               onClick={() => setExpandedCard(expandedCard === cartao.id ? null : cartao.id)}
               className="w-full rounded-lg bg-card border border-border p-2 text-left hover:shadow-sm transition-shadow"
             >
-              <p className="text-xs font-medium truncate">{cartao.instituicao}</p>
+              <div className="flex items-center gap-1.5 mb-1">
+                <LogoImage name={cartao.instituicao} size="xs" />
+                <p className="text-xs font-medium truncate">{cartao.instituicao}</p>
+              </div>
               <p className="text-sm font-semibold">{formatCurrency(total)}</p>
               <div className="flex items-center justify-between mt-1">
                 <span className={cn("text-[10px]", pago ? "text-success" : "text-warning")}>
@@ -247,9 +273,12 @@ const Dashboard = () => {
           <Card className="border-primary/30">
             <CardContent className="p-4 space-y-3">
               <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-semibold">{group.cartao.instituicao} •••• {group.cartao.final_cartao}</p>
-                  <p className="text-xs text-muted-foreground">Fech. dia {group.cartao.dia_fechamento} · Venc. dia {group.cartao.dia_vencimento}</p>
+                <div className="flex items-center gap-2">
+                  <LogoImage name={group.cartao.instituicao} size="md" />
+                  <div>
+                    <p className="text-sm font-semibold">{group.cartao.instituicao} •••• {group.cartao.final_cartao}</p>
+                    <p className="text-xs text-muted-foreground">Fech. dia {group.cartao.dia_fechamento} · Venc. dia {group.cartao.dia_vencimento}</p>
+                  </div>
                 </div>
                 <div className="text-right">
                   <p className="text-lg font-bold">{formatCurrency(group.total)}</p>
@@ -368,6 +397,18 @@ const Dashboard = () => {
 
       <NovoLancamentoModal open={showEdit} onOpenChange={setShowEdit} editItem={editItem} />
 
+      {/* Modal Pagar Despesa Fixa */}
+      <PagarDespesaFixaModal
+        open={showPagarFixaModal}
+        onOpenChange={(v) => { setShowPagarFixaModal(v); if (!v) setPagarFixaItem(null); }}
+        lancamento={pagarFixaItem}
+        onConfirm={() => {
+          if (pagarFixaItem) pagarDespesaFixa.mutate({ id: pagarFixaItem.id, pago: true });
+          setShowPagarFixaModal(false);
+          setPagarFixaItem(null);
+        }}
+      />
+
       {/* Modal Comprovante Despesa Fixa */}
       <ReceiptDespesaFixaModal
         open={showReceiptModal}
@@ -413,7 +454,16 @@ const LancamentoRow = ({ item, onClick }: { item: Tables<"lancamentos">; onClick
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium truncate">{item.descricao}</p>
-        <p className="text-xs text-muted-foreground">{cat.label}{item.loja ? ` · ${item.loja}` : ""}</p>
+        <div className="flex items-center gap-1.5">
+          <p className="text-xs text-muted-foreground">{cat.label}</p>
+          {item.loja && (
+            <>
+              <span className="text-xs text-muted-foreground">·</span>
+              <LogoImage name={item.loja} size="xs" />
+              <p className="text-xs text-muted-foreground truncate">{item.loja}</p>
+            </>
+          )}
+        </div>
       </div>
       <p className={cn("text-sm font-semibold", item.tipo === "receita" ? "text-success" : "text-foreground")}>
         {item.tipo === "receita" ? "+" : "-"}{formatCurrency(item.valor)}
@@ -422,11 +472,16 @@ const LancamentoRow = ({ item, onClick }: { item: Tables<"lancamentos">; onClick
   );
 };
 
-const MiniLancamentoRow = ({ item, onClick, onReceiptClick }: { item: Tables<"lancamentos">; onClick: () => void; onReceiptClick?: () => void }) => {
+const MiniLancamentoRow = ({ item, onClick, onReceiptClick, onPagar }: { item: Tables<"lancamentos">; onClick: () => void; onReceiptClick?: () => void; onPagar?: () => void }) => {
   const cat = getCategoriaInfo(item.categoria);
   const Icon = cat.icon;
   return (
-    <div className="flex w-full items-center gap-2 rounded-lg bg-card p-2 border border-border hover:shadow-sm transition-shadow">
+    <div className={cn(
+      "flex w-full items-center gap-2 rounded-lg p-2 border transition-colors",
+      item.pago
+        ? "bg-success/10 border-success/40"
+        : "bg-card border-border hover:shadow-sm"
+    )}>
       <button onClick={onClick} className="flex flex-1 items-center gap-2 text-left min-w-0">
         <div className="flex h-6 w-6 items-center justify-center rounded-md flex-shrink-0" style={{ backgroundColor: cat.color + "20" }}>
           <Icon className="h-3 w-3" style={{ color: cat.color }} />
@@ -434,8 +489,24 @@ const MiniLancamentoRow = ({ item, onClick, onReceiptClick }: { item: Tables<"la
         <div className="flex-1 min-w-0">
           <p className="text-xs font-medium truncate">{item.descricao}</p>
         </div>
-        <p className="text-xs font-semibold">{formatCurrency(item.valor)}</p>
+        <p className={cn("text-xs font-semibold", item.pago ? "text-success" : "")}>
+          {formatCurrency(item.valor)}
+        </p>
       </button>
+      {onPagar && (
+        <button
+          onClick={onPagar}
+          className={cn(
+            "p-1 flex-shrink-0 rounded",
+            item.pago
+              ? "text-success hover:text-warning"
+              : "text-muted-foreground hover:text-success"
+          )}
+          title={item.pago ? "Desfazer pagamento" : "Marcar como pago"}
+        >
+          {item.pago ? <Check className="h-3 w-3" /> : <Banknote className="h-3 w-3" />}
+        </button>
+      )}
       {onReceiptClick && (
         <button
           onClick={onReceiptClick}
@@ -627,3 +698,39 @@ const PagarFaturaModal = ({ open, onOpenChange, cartaoId, userId, mes, ano, valo
 };
 
 export default Dashboard;
+
+/* ---- Pagar Despesa Fixa Modal ---- */
+
+interface PagarDespesaFixaModalProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  lancamento: Tables<"lancamentos"> | null;
+  onConfirm: () => void;
+}
+
+const PagarDespesaFixaModal = ({ open, onOpenChange, lancamento, onConfirm }: PagarDespesaFixaModalProps) => (
+  <Dialog open={open} onOpenChange={onOpenChange}>
+    <DialogContent className="sm:max-w-xs">
+      <DialogHeader>
+        <DialogTitle>💳 Confirmar Pagamento</DialogTitle>
+      </DialogHeader>
+      <div className="space-y-4">
+        <div className="rounded-lg bg-secondary p-4 text-center">
+          <p className="text-sm font-medium text-muted-foreground">{lancamento?.descricao}</p>
+          <p className="text-2xl font-bold mt-1">{formatCurrency(lancamento?.valor ?? 0)}</p>
+        </div>
+        <p className="text-sm text-muted-foreground text-center">
+          Confirmar o pagamento desta despesa fixa? Ela ficará verde na tela.
+        </p>
+        <div className="flex gap-2">
+          <Button variant="outline" className="flex-1" onClick={() => onOpenChange(false)}>
+            Cancelar
+          </Button>
+          <Button className="flex-1 bg-success hover:bg-success/90" onClick={onConfirm}>
+            <Check className="h-4 w-4 mr-1" /> Confirmar
+          </Button>
+        </div>
+      </div>
+    </DialogContent>
+  </Dialog>
+);

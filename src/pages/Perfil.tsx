@@ -11,6 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import { formatCurrency } from "@/lib/formatters";
 import { User, CreditCard, Plus, Trash2, Edit2, LogOut, Check, X } from "lucide-react";
 import type { Tables, TablesInsert } from "@/integrations/supabase/types";
+import { LogoImage } from "@/lib/logos";
 
 const Perfil = () => {
   const { user, signOut } = useAuth();
@@ -122,13 +123,16 @@ const Perfil = () => {
           {cartoes.length === 0 && <p className="text-sm text-muted-foreground">Nenhum cartão cadastrado.</p>}
           {cartoes.map((c) => (
             <div key={c.id} className="flex items-center justify-between rounded-lg bg-secondary p-3">
-              <div>
-                <p className="text-sm font-medium">{c.instituicao}</p>
-                <p className="text-xs text-muted-foreground">
-                  •••• {c.final_cartao} · Limite: {formatCurrency(c.limite)} · Fech: {c.dia_fechamento} · Venc: {c.dia_vencimento}
-                </p>
+              <div className="flex items-center gap-2 min-w-0">
+                <LogoImage name={c.instituicao} size="md" />
+                <div className="min-w-0">
+                  <p className="text-sm font-medium">{c.instituicao}</p>
+                  <p className="text-xs text-muted-foreground">
+                    •••• {c.final_cartao} · Limite: {formatCurrency(c.limite)} · Fech: {c.dia_fechamento} · Venc: {c.dia_vencimento}
+                  </p>
+                </div>
               </div>
-              <div className="flex gap-1">
+              <div className="flex gap-1 flex-shrink-0">
                 <button onClick={() => { setEditCartao(c); setShowCartaoModal(true); }}
                   className="p-1 text-muted-foreground hover:text-foreground">
                   <Edit2 className="h-4 w-4" />

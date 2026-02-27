@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
@@ -14,6 +15,9 @@ import { cn } from "@/lib/utils";
 import type { Tables } from "@/integrations/supabase/types";
 import { ReceiptUploadButton } from '@/components/ReceiptUploadButton';
 import { ReceiptViewer } from '@/components/ReceiptViewer';
+import { LogoImage } from "@/lib/logos";
+import { parseBankNotification } from "@/lib/notificationParser";
+import { Smartphone, X } from "lucide-react";
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -40,6 +44,9 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem }: Props) => {
   // Estados para comprovante
   const [receiptPath, setReceiptPath] = useState<string>('');
   const [receiptFileName, setReceiptFileName] = useState<string>('');
+  // Estado para importar notificação do banco
+  const [showNotifPanel, setShowNotifPanel] = useState(false);
+  const [notifText, setNotifText] = useState("");
 
   useEffect(() => {
     if (!user || !open) return;
@@ -80,6 +87,18 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem }: Props) => {
     setLoja("");
     setReceiptPath("");
     setReceiptFileName("");
+    setShowNotifPanel(false);
+    setNotifText("");
+  };
+
+  const handleImportNotif = () => {
+    const parsed = parseBankNotification(notifText);
+    if (parsed.valor) setValor(String(parsed.valor));
+    if (parsed.loja) setLoja(parsed.loja);
+    if (parsed.descricao) setDescricao(parsed.descricao);
+    setShowNotifPanel(false);
+    setNotifText("");
+    toast({ title: "Notificação importada!", description: "Confira os dados e ajuste se necessário." });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -169,6 +188,40 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem }: Props) => {
           <DialogTitle>{editItem ? "Editar Lançamento" : "Novo Lançamento"}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Importar notificação do banco */}
+          {!editItem && (
+            <div className="space-y-2">
+              <button
+                type="button"
+                onClick={() => setShowNotifPanel(!showNotifPanel)}
+                className="flex w-full items-center justify-between rounded-lg border border-dashed border-primary/40 bg-primary/5 px-3 py-2 text-sm text-primary hover:bg-primary/10 transition-colors"
+              >
+                <span className="flex items-center gap-2">
+                  <Smartphone className="h-4 w-4" />
+                  📱 Importar notificação do banco
+                </span>
+                {showNotifPanel ? <X className="h-4 w-4" /> : null}
+              </button>
+              {showNotifPanel && (
+                <div className="rounded-lg border border-border bg-secondary/50 p-3 space-y-2">
+                  <p className="text-xs text-muted-foreground">
+                    Cole o texto da notificação do seu banco aqui (SMS, WhatsApp, push). O app vai extrair o valor e o estabelecimento.
+                  </p>
+                  <Textarea
+                    placeholder="Ex: Nubank: Compra aprovada de R$ 89,90 em FARMÁCIA DROGASIL..."
+                    value={notifText}
+                    onChange={(e) => setNotifText(e.target.value)}
+                    rows={3}
+                    className="text-sm"
+                  />
+                  <Button type="button" size="sm" onClick={handleImportNotif} disabled={!notifText.trim()}>
+                    Importar dados
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Tipo toggle */}
           <div className="flex gap-2">
             <Button type="button" variant={tipo === "receita" ? "default" : "outline"}
@@ -258,7 +311,10 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem }: Props) => {
 
           <div className="space-y-2">
             <Label>Loja (opcional)</Label>
-            <Input value={loja} onChange={(e) => setLoja(e.target.value)} />
+            <div className="flex items-center gap-2">
+              {loja && <LogoImage name={loja} size="sm" />}
+              <Input value={loja} onChange={(e) => setLoja(e.target.value)} className="flex-1" />
+            </div>
           </div>
 
           {/* SEÇÃO DE COMPROVANTE */}
