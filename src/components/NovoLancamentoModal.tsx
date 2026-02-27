@@ -14,7 +14,6 @@ import { cn } from "@/lib/utils";
 import type { Tables } from "@/integrations/supabase/types";
 import { ReceiptUploadButton } from '@/components/ReceiptUploadButton';
 import { ReceiptViewer } from '@/components/ReceiptViewer';
-import { useReceipts } from '@/hooks/useReceipts';
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -38,27 +37,9 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem }: Props) => {
   const [loja, setLoja] = useState("");
   const [cartoes, setCartoes] = useState<Tables<"cartoes">[]>([]);
   const [loading, setLoading] = useState(false);
-    // Estados para comprovante
+  // Estados para comprovante
   const [receiptPath, setReceiptPath] = useState<string>('');
   const [receiptFileName, setReceiptFileName] = useState<string>('');
-  const [existingReceipts, setExistingReceipts] = useState<any[]>([]);
-  const { fetchReceiptsForTransaction } = useReceipts();
-    // Carregar comprovantes existentes quando abrir o modal
-  useEffect(() => {
-    if (editItem?.id) {
-      loadExistingReceipts(editItem.id);
-    } else {
-      // Se for novo lançamento, limpar os estados
-      setReceiptPath('');
-      setReceiptFileName('');
-      setExistingReceipts([]);
-    }
-  }, [editItem?.id, open]);
-
-  const loadExistingReceipts = async (transactionId: string) => {
-    const receipts = await fetchReceiptsForTransaction(transactionId);
-    setExistingReceipts(receipts);
-  };
 
   useEffect(() => {
     if (!user || !open) return;
@@ -79,6 +60,8 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem }: Props) => {
       setCartaoId(editItem.cartao_id || "");
       setTotalParcelas(String(editItem.total_parcelas || 1));
       setLoja(editItem.loja || "");
+      setReceiptPath(editItem.comprovante_url || "");
+      setReceiptFileName(editItem.comprovante_url ? "Comprovante" : "");
     } else {
       resetForm();
     }
@@ -95,11 +78,19 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem }: Props) => {
     setCartaoId("");
     setTotalParcelas("1");
     setLoja("");
+    setReceiptPath("");
+    setReceiptFileName("");
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
+
+    if (metodo === "cartao" && !cartaoId) {
+      toast({ title: "Selecione um cartão", description: "É necessário selecionar um cartão para lançamentos no cartão.", variant: "destructive" });
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -113,7 +104,7 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem }: Props) => {
             tipo, descricao, valor: valorNum, data, categoria, fixo,
             metodo, cartao_id: metodo === "cartao" ? cartaoId || null : null,
             total_parcelas: metodo === "cartao" ? parseInt(totalParcelas) : null,
-            loja,
+            loja, comprovante_url: receiptPath || null,
           })
           .eq("id", editItem.id);
         if (error) throw error;
@@ -141,6 +132,7 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem }: Props) => {
         const { error } = await supabase.from("lancamentos").insert({
           user_id: user.id, tipo, descricao, valor: valorNum, data, categoria,
           fixo, metodo, cartao_id: metodo === "cartao" ? cartaoId || null : null, loja,
+          comprovante_url: receiptPath || null,
         });
         if (error) throw error;
       }
@@ -269,52 +261,31 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem }: Props) => {
             <Input value={loja} onChange={(e) => setLoja(e.target.value)} />
           </div>
 
+          {/* SEÇÃO DE COMPROVANTE */}
+          <div className="border-t pt-4">
+            <h3 className="font-semibold mb-3 text-sm">📎 Comprovante</h3>
+            {receiptPath ? (
+              <ReceiptViewer
+                filePath={receiptPath}
+                fileName={receiptFileName || 'Comprovante'}
+                onRemove={() => { setReceiptPath(''); setReceiptFileName(''); }}
+              />
+            ) : (
+              <ReceiptUploadButton
+                onUploadSuccess={(path, fileName) => {
+                  setReceiptPath(path);
+                  setReceiptFileName(fileName);
+                }}
+              />
+            )}
+          </div>
+
           <div className="flex gap-2 pt-2">
             {editItem && (
               <Button type="button" variant="destructive" onClick={handleDelete} disabled={loading}>
                 Excluir
               </Button>
             )}
-                  {/* SEÇÃO DE COMPROVANTE */}
-      <div className="border-t pt-4 mt-4">
-        <h3 className="font-semibold mb-3 text-sm">📎 Comprovante</h3>
-        
-        {/* Mostrar comprovantes existentes */}
-        {existingReceipts.length > 0 && (
-          <div className="mb-4 space-y-2">
-            <p className="text-xs text-gray-600">Comprovantes já salvos:</p>
-            {existingReceipts.map((receipt) => (
-              <ReceiptViewer
-                key={receipt.id}
-                filePath={receipt.file_path}
-                fileName={receipt.file_name}
-                receiptId={receipt.id}
-                onDelete={() => {
-                  setExistingReceipts(
-                    existingReceipts.filter((r) => r.id !== receipt.id)
-                  );
-                }}
-              />
-            ))}
-          </div>
-        )}
-
-        {/* Adicionar novo comprovante */}
-        {receiptPath ? (
-          <ReceiptViewer
-            filePath={receiptPath}
-            fileName={receiptFileName}
-          />
-        ) : (
-          <ReceiptUploadButton
-            transactionId={editItem?.id || 'novo'}
-            onUploadSuccess={(path, fileName) => {
-              setReceiptPath(path);
-              setReceiptFileName(fileName);
-            }}
-          />
-        )}
-      </div>
             <Button type="submit" className="flex-1" disabled={loading}>
               {loading ? "Salvando..." : editItem ? "Atualizar" : "Adicionar"}
             </Button>

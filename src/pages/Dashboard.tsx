@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -15,7 +15,7 @@ import { getCategoriaInfo } from "@/lib/categories";
 import { useToast } from "@/hooks/use-toast";
 import {
   TrendingUp, TrendingDown, CreditCard, ShoppingBag,
-  ChevronDown, ChevronUp, Plus, Trash2, Edit2, Check, Undo2,
+  ChevronDown, ChevronUp, Plus, Trash2, Edit2, Check, Undo2, Paperclip,
 } from "lucide-react";
 import { ReceiptUploadButton } from '@/components/ReceiptUploadButton';
 import { ReceiptViewer } from '@/components/ReceiptViewer';
@@ -34,6 +34,8 @@ const Dashboard = () => {
   const [expandedCard, setExpandedCard] = useState<string | null>(null);
   const [showPagarModal, setShowPagarModal] = useState(false);
   const [pagarCartaoId, setPagarCartaoId] = useState<string | null>(null);
+  const [showReceiptModal, setShowReceiptModal] = useState(false);
+  const [receiptLancamento, setReceiptLancamento] = useState<Tables<"lancamentos"> | null>(null);
 
   const startDate = `${ano}-${String(mes + 1).padStart(2, "0")}-01`;
   const endDate = mes === 11 ? `${ano + 1}-01-01` : `${ano}-${String(mes + 2).padStart(2, "0")}-01`;
@@ -50,7 +52,7 @@ const Dashboard = () => {
     enabled: !!user,
   });
 
-  const { data: cartoes = [] } = useQuery({
+  const { data: cartoes = [], isSuccess: cartoesLoaded } = useQuery({
     queryKey: ["cartoes", user?.id],
     queryFn: async () => {
       const { data, error } = await supabase.from("cartoes").select("*").eq("user_id", user!.id);
@@ -78,10 +80,16 @@ const Dashboard = () => {
     const totalDespesa = despesas.reduce((s, l) => s + l.valor, 0);
     const fixasReceita = receitas.filter((l) => l.fixo);
     const fixasDespesa = despesas.filter((l) => l.fixo && l.metodo === "avista");
-    const cartaoLanc = despesas.filter((l) => l.metodo === "cartao");
+    const cartaoIds = new Set(cartoes.map((c) => c.id));
+    // Only include card expenses that are linked to an existing card
+    const cartaoLanc = despesas.filter((l) => l.metodo === "cartao" && !!l.cartao_id && cartaoIds.has(l.cartao_id));
     const variaveis = despesas.filter((l) => !l.fixo && l.metodo === "avista");
-    return { totalReceita, totalDespesa, fixasReceita, fixasDespesa, cartaoLanc, variaveis };
-  }, [lancamentos]);
+    // Orphaned: metodo=cartao but no valid card → invisible and causes ghost balance reduction
+    const orfaos = cartoesLoaded
+      ? despesas.filter((l) => l.metodo === "cartao" && (!l.cartao_id || !cartaoIds.has(l.cartao_id)))
+      : [];
+    return { totalReceita, totalDespesa, fixasReceita, fixasDespesa, cartaoLanc, variaveis, orfaos };
+  }, [lancamentos, cartoes, cartoesLoaded]);
 
   const saldo = stats.totalReceita - stats.totalDespesa;
   const pctGasto = stats.totalReceita > 0
@@ -183,7 +191,12 @@ const Dashboard = () => {
             <p className="text-xs text-muted-foreground">Nenhuma</p>
           )}
           {stats.fixasDespesa.map((l) => (
-            <MiniLancamentoRow key={l.id} item={l} onClick={() => openEdit(l)} />
+            <MiniLancamentoRow
+              key={l.id}
+              item={l}
+              onClick={() => openEdit(l)}
+              onReceiptClick={() => { setReceiptLancamento(l); setShowReceiptModal(true); }}
+            />
           ))}
           {stats.fixasDespesa.length > 0 && (
             <div className="rounded-lg bg-destructive/10 px-2 py-1.5 text-center">
@@ -319,6 +332,24 @@ const Dashboard = () => {
         );
       })()}
 
+      {/* Despesas órfãs — card expenses with no valid card (ghost expenses) */}
+      {stats.orfaos.length > 0 && (
+        <div className="rounded-lg border border-destructive/50 bg-destructive/5 p-3 space-y-2">
+          <div className="flex items-center gap-2">
+            <span className="text-destructive">⚠️</span>
+            <p className="text-xs font-semibold text-destructive">Lançamentos sem cartão associado</p>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Estes lançamentos estão afetando o saldo mas não estão vinculados a nenhum cartão. Toque em um para editar ou excluir.
+          </p>
+          <div className="space-y-2">
+            {stats.orfaos.map((l) => (
+              <LancamentoRow key={l.id} item={l} onClick={() => openEdit(l)} />
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Variáveis */}
       {stats.variaveis.length > 0 && (
         <Section title="Variáveis" icon={<ShoppingBag className="h-4 w-4 text-warning" />}>
@@ -336,6 +367,14 @@ const Dashboard = () => {
       )}
 
       <NovoLancamentoModal open={showEdit} onOpenChange={setShowEdit} editItem={editItem} />
+
+      {/* Modal Comprovante Despesa Fixa */}
+      <ReceiptDespesaFixaModal
+        open={showReceiptModal}
+        onOpenChange={(v) => { setShowReceiptModal(v); if (!v) setReceiptLancamento(null); }}
+        lancamento={receiptLancamento}
+        onSaved={() => qc.invalidateQueries({ queryKey: ["lancamentos"] })}
+      />
 
       {/* Modal Pagar Fatura */}
       <PagarFaturaModal
@@ -383,19 +422,108 @@ const LancamentoRow = ({ item, onClick }: { item: Tables<"lancamentos">; onClick
   );
 };
 
-const MiniLancamentoRow = ({ item, onClick }: { item: Tables<"lancamentos">; onClick: () => void }) => {
+const MiniLancamentoRow = ({ item, onClick, onReceiptClick }: { item: Tables<"lancamentos">; onClick: () => void; onReceiptClick?: () => void }) => {
   const cat = getCategoriaInfo(item.categoria);
   const Icon = cat.icon;
   return (
-    <button onClick={onClick} className="flex w-full items-center gap-2 rounded-lg bg-card p-2 text-left border border-border hover:shadow-sm transition-shadow">
-      <div className="flex h-6 w-6 items-center justify-center rounded-md" style={{ backgroundColor: cat.color + "20" }}>
-        <Icon className="h-3 w-3" style={{ color: cat.color }} />
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-xs font-medium truncate">{item.descricao}</p>
-      </div>
-      <p className="text-xs font-semibold">{formatCurrency(item.valor)}</p>
-    </button>
+    <div className="flex w-full items-center gap-2 rounded-lg bg-card p-2 border border-border hover:shadow-sm transition-shadow">
+      <button onClick={onClick} className="flex flex-1 items-center gap-2 text-left min-w-0">
+        <div className="flex h-6 w-6 items-center justify-center rounded-md flex-shrink-0" style={{ backgroundColor: cat.color + "20" }}>
+          <Icon className="h-3 w-3" style={{ color: cat.color }} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-medium truncate">{item.descricao}</p>
+        </div>
+        <p className="text-xs font-semibold">{formatCurrency(item.valor)}</p>
+      </button>
+      {onReceiptClick && (
+        <button
+          onClick={onReceiptClick}
+          className={cn("p-1 flex-shrink-0", item.comprovante_url ? "text-success" : "text-muted-foreground hover:text-foreground")}
+          title={item.comprovante_url ? "Ver/Alterar comprovante" : "Anexar comprovante"}
+        >
+          <Paperclip className="h-3 w-3" />
+        </button>
+      )}
+    </div>
+  );
+};
+
+/* ---- Comprovante Despesa Fixa Modal ---- */
+
+interface ReceiptDespesaFixaModalProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  lancamento: Tables<"lancamentos"> | null;
+  onSaved: () => void;
+}
+
+const ReceiptDespesaFixaModal = ({ open, onOpenChange, lancamento, onSaved }: ReceiptDespesaFixaModalProps) => {
+  const { toast } = useToast();
+  const [loading, setLoading] = useState(false);
+  const [receiptPath, setReceiptPath] = useState<string>('');
+  const [receiptFileName, setReceiptFileName] = useState<string>('');
+
+  useEffect(() => {
+    if (lancamento) {
+      setReceiptPath(lancamento.comprovante_url || '');
+      setReceiptFileName(lancamento.comprovante_url ? 'Comprovante' : '');
+    } else {
+      setReceiptPath('');
+      setReceiptFileName('');
+    }
+  }, [lancamento, open]);
+
+  const handleSave = async () => {
+    if (!lancamento) return;
+    setLoading(true);
+    try {
+      const { error } = await supabase
+        .from("lancamentos")
+        .update({ comprovante_url: receiptPath || null })
+        .eq("id", lancamento.id);
+      if (error) throw error;
+      toast({ title: "Comprovante salvo!" });
+      onSaved();
+      onOpenChange(false);
+    } catch (err: any) {
+      toast({ title: "Erro", description: err.message, variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>📎 Comprovante — {lancamento?.descricao}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="rounded-lg bg-secondary p-3 text-center">
+            <p className="text-sm text-muted-foreground">Valor</p>
+            <p className="text-2xl font-bold">{formatCurrency(lancamento?.valor ?? 0)}</p>
+          </div>
+          {receiptPath ? (
+            <ReceiptViewer
+              filePath={receiptPath}
+              fileName={receiptFileName || 'Comprovante'}
+              onRemove={() => { setReceiptPath(''); setReceiptFileName(''); }}
+            />
+          ) : (
+            <ReceiptUploadButton
+              onUploadSuccess={(path, fileName) => {
+                setReceiptPath(path);
+                setReceiptFileName(fileName);
+              }}
+            />
+          )}
+          <Button className="w-full" onClick={handleSave} disabled={loading}>
+            {loading ? "Salvando..." : "Salvar"}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 };
 
@@ -428,13 +556,14 @@ const PagarFaturaModal = ({ open, onOpenChange, cartaoId, userId, mes, ano, valo
       const valor = parseFloat(valorPago) || valorTotal;
       if (faturaExistente) {
         const { error } = await supabase.from("faturas")
-          .update({ pago: true, valor_pago: valor, data_pagamento: new Date().toISOString().split("T")[0] })
+          .update({ pago: true, valor_pago: valor, data_pagamento: new Date().toISOString().split("T")[0], comprovante_url: receiptPath || null })
           .eq("id", faturaExistente.id);
         if (error) throw error;
       } else {
         const { error } = await supabase.from("faturas").insert({
           user_id: userId, cartao_id: cartaoId, mes, ano,
           pago: true, valor_pago: valor, data_pagamento: new Date().toISOString().split("T")[0],
+          comprovante_url: receiptPath || null,
         });
         if (error) throw error;
       }
@@ -473,15 +602,14 @@ const PagarFaturaModal = ({ open, onOpenChange, cartaoId, userId, mes, ano, valo
                      {/* SEÇÃO DE COMPROVANTE DO PAGAMENTO */}
            <div className="border-t pt-4">
              <h4 className="font-semibold text-sm mb-3">📸 Comprovante do Pagamento</h4>
-             
              {receiptPath ? (
                <ReceiptViewer
                  filePath={receiptPath}
                  fileName={receiptFileName}
+                 onRemove={() => { setReceiptPath(''); setReceiptFileName(''); }}
                />
              ) : (
                <ReceiptUploadButton
-                 transactionId={`payment_${cartaoId}_${mes}_${ano}`}
                  onUploadSuccess={(path, fileName) => {
                    setReceiptPath(path);
                    setReceiptFileName(fileName);
