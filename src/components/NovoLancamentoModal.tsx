@@ -12,7 +12,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import { CATEGORIAS } from "@/lib/categories";
 import { cn } from "@/lib/utils";
 import type { Tables } from "@/integrations/supabase/types";
-
+import { ReceiptUploadButton } from '@/components/ReceiptUploadButton';
+import { ReceiptViewer } from '@/components/ReceiptViewer';
+import { useReceipts } from '@/hooks/useReceipts';
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
