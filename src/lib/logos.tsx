@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { cn } from "@/lib/utils";
 
 // Map of common Brazilian banks and stores to their domains for logo lookup
@@ -58,17 +58,19 @@ const KNOWN_DOMAINS: Array<[string, string]> = [
   ["microsoft", "microsoft.com"],
 ];
 
-export function getLogoUrl(name: string): string {
+export function getLogoDomain(name: string): string {
   if (!name?.trim()) return "";
   const key = name.toLowerCase().trim();
   for (const [pattern, domain] of KNOWN_DOMAINS) {
-    if (key.includes(pattern)) {
-      return `https://logo.clearbit.com/${domain}`;
-    }
+    if (key.includes(pattern)) return domain;
   }
-  // Fallback: try clearbit with the normalized name as a .com.br domain
   const slug = key.replace(/\s+/g, "").replace(/[^a-z0-9]/gi, "");
-  return slug.length >= 3 ? `https://logo.clearbit.com/${slug}.com.br` : "";
+  return slug.length >= 3 ? `${slug}.com.br` : "";
+}
+
+export function getLogoUrl(name: string): string {
+  const domain = getLogoDomain(name);
+  return domain ? `https://logo.clearbit.com/${domain}` : "";
 }
 
 export function getInitials(name: string): string {
@@ -91,11 +93,27 @@ interface LogoImageProps {
 }
 
 export const LogoImage = ({ name, size = "sm", className }: LogoImageProps) => {
-  const [failed, setFailed] = useState(false);
-  const url = getLogoUrl(name);
+  const [fallbackIndex, setFallbackIndex] = useState(0);
   const sizeClass = SIZE_CLASSES[size];
 
-  if (!url || failed) {
+  const domain = useMemo(() => getLogoDomain(name), [name]);
+
+  // Reset fallback when the domain changes (different name prop)
+  useEffect(() => {
+    setFallbackIndex(0);
+  }, [domain]);
+
+  const urls = useMemo(() => {
+    if (!domain) return [];
+    return [
+      `https://logo.clearbit.com/${domain}`,
+      `https://www.google.com/s2/favicons?domain=${domain}&sz=128`,
+    ];
+  }, [domain]);
+
+  const currentUrl = urls[fallbackIndex];
+
+  if (!currentUrl) {
     return (
       <div
         className={cn(
@@ -111,9 +129,9 @@ export const LogoImage = ({ name, size = "sm", className }: LogoImageProps) => {
 
   return (
     <img
-      src={url}
+      src={currentUrl}
       alt={name}
-      onError={() => setFailed(true)}
+      onError={() => setFallbackIndex((prev) => prev + 1)}
       className={cn(
         "flex-shrink-0 rounded-md border border-border/50 bg-white object-contain p-[1px]",
         sizeClass,

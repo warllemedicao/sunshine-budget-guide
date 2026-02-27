@@ -127,6 +127,20 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem }: Props) => {
           })
           .eq("id", editItem.id);
         if (error) throw error;
+
+        // Propagate common fields to future installments in the same group
+        if (editItem.parcela_grupo_id && editItem.parcela_atual) {
+          const { error: errFuture } = await supabase
+            .from("lancamentos")
+            .update({
+              categoria, loja,
+              cartao_id: metodo === "cartao" ? cartaoId || null : null,
+              metodo, fixo,
+            })
+            .eq("parcela_grupo_id", editItem.parcela_grupo_id)
+            .gt("parcela_atual", editItem.parcela_atual);
+          if (errFuture) throw errFuture;
+        }
       } else if (metodo === "cartao" && parseInt(totalParcelas) > 1) {
         const grupoId = crypto.randomUUID();
         const parcelas = parseInt(totalParcelas);
@@ -170,13 +184,24 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem }: Props) => {
   const handleDelete = async () => {
     if (!editItem) return;
     setLoading(true);
-    const { error } = await supabase.from("lancamentos").delete().eq("id", editItem.id);
-    if (error) {
-      toast({ title: "Erro ao excluir", variant: "destructive" });
-    } else {
+    try {
+      if (editItem.parcela_grupo_id && editItem.parcela_atual) {
+        // Delete this installment and all future ones in the same group
+        const { error } = await supabase
+          .from("lancamentos")
+          .delete()
+          .eq("parcela_grupo_id", editItem.parcela_grupo_id)
+          .gte("parcela_atual", editItem.parcela_atual);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from("lancamentos").delete().eq("id", editItem.id);
+        if (error) throw error;
+      }
       queryClient.invalidateQueries({ queryKey: ["lancamentos"] });
       toast({ title: "Excluído!" });
       onOpenChange(false);
+    } catch {
+      toast({ title: "Erro ao excluir", variant: "destructive" });
     }
     setLoading(false);
   };
@@ -339,13 +364,20 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem }: Props) => {
           <div className="flex gap-2 pt-2">
             {editItem && (
               <Button type="button" variant="destructive" onClick={handleDelete} disabled={loading}>
-                Excluir
+                {editItem.parcela_grupo_id && editItem.parcela_atual
+                  ? `Excluir (${editItem.parcela_atual}/${editItem.total_parcelas} em diante)`
+                  : "Excluir"}
               </Button>
             )}
             <Button type="submit" className="flex-1" disabled={loading}>
               {loading ? "Salvando..." : editItem ? "Atualizar" : "Adicionar"}
             </Button>
           </div>
+          {editItem?.parcela_grupo_id && editItem.parcela_atual && (
+            <p className="text-xs text-muted-foreground text-center -mt-1">
+              ℹ️ Campos comuns (categoria, loja, cartão, método) serão aplicados às parcelas seguintes.
+            </p>
+          )}
         </form>
       </DialogContent>
     </Dialog>
