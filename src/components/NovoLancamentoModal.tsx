@@ -108,6 +108,28 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem }: Props) => {
           })
           .eq("id", editItem.id);
         if (error) throw error;
+      } else if (fixo) {
+        // Fixed entries: replicate to all remaining months of the year
+        const grupoId = crypto.randomUUID();
+        const baseDate = new Date(data + "T00:00:00");
+        const baseMonth = baseDate.getMonth();
+        const baseYear = baseDate.getFullYear();
+
+        const inserts = [];
+        const baseDay = baseDate.getDate();
+        for (let m = baseMonth; m <= 11; m++) {
+          const lastDay = new Date(baseYear, m + 1, 0).getDate();
+          const d = new Date(baseYear, m, Math.min(baseDay, lastDay));
+          inserts.push({
+            user_id: user.id, tipo, descricao, valor: valorNum,
+            data: d.toISOString().split("T")[0], categoria, fixo: true,
+            metodo, cartao_id: metodo === "cartao" ? cartaoId || null : null,
+            parcela_grupo_id: grupoId, loja,
+          });
+        }
+
+        const { error } = await supabase.from("lancamentos").insert(inserts);
+        if (error) throw error;
       } else if (metodo === "cartao" && parseInt(totalParcelas) > 1) {
         const grupoId = crypto.randomUUID();
         const parcelas = parseInt(totalParcelas);
@@ -151,15 +173,26 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem }: Props) => {
   const handleDelete = async () => {
     if (!editItem) return;
     setLoading(true);
-    const { error } = await supabase.from("lancamentos").delete().eq("id", editItem.id);
-    if (error) {
-      toast({ title: "Erro ao excluir", variant: "destructive" });
-    } else {
+    try {
+      if (editItem.fixo && editItem.parcela_grupo_id) {
+        // Delete this month and all future occurrences in the recurring group
+        const { error } = await supabase.from("lancamentos")
+          .delete()
+          .eq("parcela_grupo_id", editItem.parcela_grupo_id)
+          .gte("data", editItem.data);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from("lancamentos").delete().eq("id", editItem.id);
+        if (error) throw error;
+      }
       queryClient.invalidateQueries({ queryKey: ["lancamentos"] });
       toast({ title: "Excluído!" });
       onOpenChange(false);
+    } catch (err: any) {
+      toast({ title: "Erro ao excluir", description: err.message, variant: "destructive" });
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (

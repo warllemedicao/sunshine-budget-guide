@@ -79,7 +79,7 @@ const Dashboard = () => {
     const totalReceita = receitas.reduce((s, l) => s + l.valor, 0);
     const totalDespesa = despesas.reduce((s, l) => s + l.valor, 0);
     const fixasReceita = receitas.filter((l) => l.fixo);
-    const fixasDespesa = despesas.filter((l) => l.fixo && l.metodo === "avista");
+    const fixasDespesa = despesas.filter((l) => l.fixo);
     const cartaoIds = new Set(cartoes.map((c) => c.id));
     // Only include card expenses that are linked to an existing card
     const cartaoLanc = despesas.filter((l) => l.metodo === "cartao" && !!l.cartao_id && cartaoIds.has(l.cartao_id));
@@ -190,14 +190,27 @@ const Dashboard = () => {
           {stats.fixasDespesa.length === 0 && (
             <p className="text-xs text-muted-foreground">Nenhuma</p>
           )}
-          {stats.fixasDespesa.map((l) => (
-            <MiniLancamentoRow
-              key={l.id}
-              item={l}
-              onClick={() => openEdit(l)}
-              onReceiptClick={() => { setReceiptLancamento(l); setShowReceiptModal(true); }}
-            />
-          ))}
+          {stats.fixasDespesa.map((l) => {
+            let isPago: boolean | undefined;
+            if (l.metodo === "cartao" && l.cartao_id) {
+              const itemDate = new Date(l.data + "T00:00:00");
+              const fatura = faturas.find(
+                (f) => f.cartao_id === l.cartao_id &&
+                  f.mes === itemDate.getMonth() + 1 &&
+                  f.ano === itemDate.getFullYear()
+              );
+              isPago = fatura?.pago ?? false;
+            }
+            return (
+              <MiniLancamentoRow
+                key={l.id}
+                item={l}
+                onClick={() => openEdit(l)}
+                onReceiptClick={() => { setReceiptLancamento(l); setShowReceiptModal(true); }}
+                isPago={isPago}
+              />
+            );
+          })}
           {stats.fixasDespesa.length > 0 && (
             <div className="rounded-lg bg-destructive/10 px-2 py-1.5 text-center">
               <p className="text-xs font-semibold text-destructive">
@@ -422,9 +435,10 @@ const LancamentoRow = ({ item, onClick }: { item: Tables<"lancamentos">; onClick
   );
 };
 
-const MiniLancamentoRow = ({ item, onClick, onReceiptClick }: { item: Tables<"lancamentos">; onClick: () => void; onReceiptClick?: () => void }) => {
+const MiniLancamentoRow = ({ item, onClick, onReceiptClick, isPago }: { item: Tables<"lancamentos">; onClick: () => void; onReceiptClick?: () => void; isPago?: boolean }) => {
   const cat = getCategoriaInfo(item.categoria);
   const Icon = cat.icon;
+  const paid = isPago !== undefined ? isPago : !!item.comprovante_url;
   return (
     <div className="flex w-full items-center gap-2 rounded-lg bg-card p-2 border border-border hover:shadow-sm transition-shadow">
       <button onClick={onClick} className="flex flex-1 items-center gap-2 text-left min-w-0">
@@ -433,14 +447,17 @@ const MiniLancamentoRow = ({ item, onClick, onReceiptClick }: { item: Tables<"la
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-xs font-medium truncate">{item.descricao}</p>
+          {item.metodo === "cartao" && (
+            <p className="text-[10px] text-primary" aria-label="Pago via cartão">💳 Cartão</p>
+          )}
         </div>
         <p className="text-xs font-semibold">{formatCurrency(item.valor)}</p>
       </button>
       {onReceiptClick && (
         <button
           onClick={onReceiptClick}
-          className={cn("p-1 flex-shrink-0", item.comprovante_url ? "text-success" : "text-muted-foreground hover:text-foreground")}
-          title={item.comprovante_url ? "Ver/Alterar comprovante" : "Anexar comprovante"}
+          className={cn("p-1 flex-shrink-0", paid ? "text-success" : "text-muted-foreground hover:text-foreground")}
+          title={paid ? "Ver/Alterar comprovante" : "Anexar comprovante"}
         >
           <Paperclip className="h-3 w-3" />
         </button>
