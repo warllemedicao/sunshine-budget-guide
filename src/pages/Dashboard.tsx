@@ -246,15 +246,20 @@ const Dashboard = () => {
         return (
           <Card className="border-primary/30">
             <CardContent className="p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-semibold">{group.cartao.instituicao} •••• {group.cartao.final_cartao}</p>
-                  <p className="text-xs text-muted-foreground">Fech. dia {group.cartao.dia_fechamento} · Venc. dia {group.cartao.dia_vencimento}</p>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex-1">
+                  <p className="text-xs text-muted-foreground">Fecha dia {group.cartao.dia_fechamento}</p>
                 </div>
-                <div className="text-right">
+                <div className="flex flex-col items-center">
+                  <CreditCard className="h-6 w-6 text-primary mb-0.5" />
+                  <p className="text-sm font-semibold text-center leading-tight">{group.cartao.instituicao}</p>
+                  <p className="text-[10px] text-muted-foreground">•••• {group.cartao.final_cartao}</p>
+                </div>
+                <div className="flex-1 text-right">
                   <p className="text-lg font-bold">{formatCurrency(group.total)}</p>
-                  <span className={cn("text-xs", group.pago ? "text-success" : "text-warning")}>
-                    {group.pago ? "Pago" : "Pendente"}
+                  <p className="text-xs text-muted-foreground">Vence dia {group.cartao.dia_vencimento}</p>
+                  <span className={cn("text-[10px]", group.pago ? "text-success" : "text-warning")}>
+                    {group.pago ? "✓ Pago" : "Pendente"}
                   </span>
                 </div>
               </div>
@@ -270,19 +275,34 @@ const Dashboard = () => {
                   const Icon = cat.icon;
                   return (
                     <div key={l.id} className="flex items-center gap-2 rounded-md bg-secondary p-2">
-                      <div className="flex h-7 w-7 items-center justify-center rounded-md" style={{ backgroundColor: cat.color + "20" }}>
-                        <Icon className="h-3.5 w-3.5" style={{ color: cat.color }} />
+                      {/* Left: store indicator + description */}
+                      <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                        {l.loja ? (
+                          <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary/10 flex-shrink-0">
+                            <span className="text-[9px] font-bold text-primary leading-none text-center">
+                              {l.loja.slice(0, 3).toUpperCase()}
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="flex h-7 w-7 items-center justify-center rounded-md flex-shrink-0" style={{ backgroundColor: cat.color + "20" }}>
+                            <Icon className="h-3.5 w-3.5" style={{ color: cat.color }} />
+                          </div>
+                        )}
+                        <div className="min-w-0">
+                          {l.loja && <p className="text-[10px] text-muted-foreground truncate">{l.loja}</p>}
+                          <p className="text-xs font-medium truncate">{l.descricao}</p>
+                          {l.parcela_atual && l.total_parcelas ? (
+                            <p className="text-[10px] text-muted-foreground">{l.parcela_atual}/{l.total_parcelas}</p>
+                          ) : null}
+                        </div>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium truncate">{l.descricao}</p>
-                        <p className="text-[10px] text-muted-foreground">
-                          {cat.label}
-                          {l.parcela_atual && l.total_parcelas ? ` · ${l.parcela_atual}/${l.total_parcelas}` : ""}
-                          {l.loja ? ` · ${l.loja}` : ""}
-                        </p>
-                      </div>
-                      <p className="text-xs font-semibold">{formatCurrency(l.valor)}</p>
-                      <div className="flex gap-0.5">
+                      {/* Middle: purchase date */}
+                      <p className="text-[10px] text-muted-foreground flex-shrink-0">
+                        {new Date(l.data + "T00:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}
+                      </p>
+                      {/* Right: value + actions */}
+                      <div className="flex items-center gap-0.5 flex-shrink-0">
+                        <p className="text-xs font-semibold">{formatCurrency(l.valor)}</p>
                         <button onClick={() => openEdit(l)} className="p-1 text-muted-foreground hover:text-foreground">
                           <Edit2 className="h-3 w-3" />
                         </button>
