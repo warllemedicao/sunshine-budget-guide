@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import AppLayout from "@/components/AppLayout";
+import AppLockScreen from "@/components/AppLockScreen";
 import Auth from "@/pages/Auth";
 import Dashboard from "@/pages/Dashboard";
 import Objetivos from "@/pages/Objetivos";
@@ -15,9 +16,10 @@ import NotFound from "@/pages/NotFound";
 const queryClient = new QueryClient();
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
-  const { user, loading } = useAuth();
+  const { user, loading, locked, unlock } = useAuth();
   if (loading) return <div className="flex min-h-screen items-center justify-center"><div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" /></div>;
   if (!user) return <Navigate to="/auth" replace />;
+  if (locked) return <AppLockScreen userEmail={user.email ?? ""} onUnlock={unlock} />;
   return <>{children}</>;
 };
 

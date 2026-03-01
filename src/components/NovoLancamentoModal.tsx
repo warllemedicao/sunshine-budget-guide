@@ -114,8 +114,19 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem }: Props) => {
         const valorParcela = +(valorNum / parcelas).toFixed(2);
         const baseDate = new Date(data + "T00:00:00");
 
+        // Determine the correct invoice month for the first installment.
+        // If the purchase day is past the card's closing day, the purchase
+        // falls into the next month's invoice.
+        // Fallback to 31 intentionally: if card not found, no date shift occurs.
+        const selectedCartao = cartoes.find((c) => c.id === cartaoId);
+        const diaFechamento = selectedCartao?.dia_fechamento ?? 31;
+        const startDate = new Date(baseDate);
+        if (baseDate.getDate() > diaFechamento) {
+          startDate.setMonth(startDate.getMonth() + 1);
+        }
+
         const inserts = Array.from({ length: parcelas }, (_, i) => {
-          const d = new Date(baseDate);
+          const d = new Date(startDate);
           d.setMonth(d.getMonth() + i);
           return {
             user_id: user.id, tipo, descricao: `${descricao} (${i + 1}/${parcelas})`,
@@ -129,8 +140,20 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem }: Props) => {
         const { error } = await supabase.from("lancamentos").insert(inserts);
         if (error) throw error;
       } else {
+        // For single-installment card purchases, also apply the closing-date rule.
+        let effectiveData = data;
+        if (metodo === "cartao" && cartaoId) {
+          const selectedCartao = cartoes.find((c) => c.id === cartaoId);
+          const diaFechamento = selectedCartao?.dia_fechamento ?? 31;
+          const purchaseDate = new Date(data + "T00:00:00");
+          if (purchaseDate.getDate() > diaFechamento) {
+            const next = new Date(purchaseDate);
+            next.setMonth(next.getMonth() + 1);
+            effectiveData = next.toISOString().split("T")[0];
+          }
+        }
         const { error } = await supabase.from("lancamentos").insert({
-          user_id: user.id, tipo, descricao, valor: valorNum, data, categoria,
+          user_id: user.id, tipo, descricao, valor: valorNum, data: effectiveData, categoria,
           fixo, metodo, cartao_id: metodo === "cartao" ? cartaoId || null : null, loja,
           comprovante_url: receiptPath || null,
         });
