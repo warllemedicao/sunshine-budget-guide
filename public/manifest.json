@@ -4,8 +4,9 @@
   "description": "Guia de orçamento e finanças pessoais",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#ffffff",
+  "display_override": ["standalone", "minimal-ui"],
+  "background_color": "#1a0d4d",
+  "theme_color": "#1a0d4d",
   "orientation": "portrait",
   "icons": [
     {
