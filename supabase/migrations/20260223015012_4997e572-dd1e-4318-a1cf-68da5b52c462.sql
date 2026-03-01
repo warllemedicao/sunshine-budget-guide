@@ -82,6 +82,7 @@ CREATE TABLE public.lancamentos (
   descricao TEXT NOT NULL DEFAULT '',
   valor DECIMAL(12,2) NOT NULL DEFAULT 0,
   data DATE NOT NULL DEFAULT CURRENT_DATE,
+  data_compra DATE, -- original purchase date chosen by the user (card purchases may differ from invoice date)
   categoria TEXT NOT NULL DEFAULT 'outros',
   fixo BOOLEAN NOT NULL DEFAULT false,
   metodo TEXT NOT NULL DEFAULT 'avista', -- 'avista' or 'cartao'
