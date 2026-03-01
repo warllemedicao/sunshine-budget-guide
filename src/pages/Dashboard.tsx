@@ -296,6 +296,7 @@ const Dashboard = () => {
                   const Icon = cat.icon;
                   // Show the original user-chosen purchase date when available
                   const displayDate = l.data_compra || l.data;
+                  const formattedDate = new Date(displayDate + "T00:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
                   return (
                     <div key={l.id} className="flex items-center gap-2 rounded-md bg-secondary p-2">
                       {/* Left: store logo + description */}
@@ -309,16 +310,15 @@ const Dashboard = () => {
                         )}
                         <div className="min-w-0">
                           {l.loja && <p className="text-[10px] text-muted-foreground truncate">{l.loja}</p>}
-                          <p className="text-xs font-medium truncate">{l.descricao}</p>
+                          <p className="text-xs font-medium truncate">
+                            <span className="text-muted-foreground font-normal mr-1">{formattedDate}</span>
+                            {l.descricao}
+                          </p>
                           {l.parcela_atual && l.total_parcelas ? (
                             <p className="text-[10px] text-muted-foreground">{l.parcela_atual}/{l.total_parcelas}</p>
                           ) : null}
                         </div>
                       </div>
-                      {/* Middle: original purchase date */}
-                      <p className="text-[10px] text-muted-foreground flex-shrink-0">
-                        {new Date(displayDate + "T00:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}
-                      </p>
                       {/* Right: value + actions */}
                       <div className="flex items-center gap-0.5 flex-shrink-0">
                         <p className="text-xs font-semibold">{formatCurrency(l.valor)}</p>

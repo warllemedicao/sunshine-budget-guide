@@ -77,7 +77,11 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
   useEffect(() => {
     if (editItem) {
       setTipo(editItem.tipo as "receita" | "despesa");
-      setDescricao(editItem.descricao);
+      // Strip the "(N/M)" installment suffix so the user edits the base description
+      const baseDescricao = editItem.parcela_atual && editItem.total_parcelas
+        ? editItem.descricao.replace(/ \(\d+\/\d+\)$/, "")
+        : editItem.descricao;
+      setDescricao(baseDescricao);
       setValor(String(editItem.valor));
       // For card purchases, prefer the original user-chosen date (data_compra) over the effective invoice date (data)
       setData(editItem.data_compra || editItem.data);
@@ -154,24 +158,65 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
           const diaFechamento = selectedCartao?.dia_fechamento ?? 31;
           effectiveDataEdit = getEffectiveInvoiceDate(data, diaFechamento);
         }
-        const updatePayload = {
-          tipo, descricao, valor: valorNum,
-          data: effectiveDataEdit,
-          data_compra: data,
-          categoria, fixo,
-          metodo, cartao_id: metodo === "cartao" ? cartaoId || null : null,
-          total_parcelas: metodo === "cartao" ? parseInt(totalParcelas) : null,
-          loja, comprovante_url: receiptPath || null,
-        };
-        const { error } = await supabase.from("lancamentos").update(updatePayload).eq("id", editItem.id);
-        if (isDataCompraSchemaError(error)) {
-          const { error: e2 } = await supabase
+
+        if (editItem.parcela_grupo_id && editItem.parcela_atual && editItem.total_parcelas) {
+          // Parceled purchase: update this installment and all future installments in the group.
+          // Fetch all future installments (by data >= this installment's data).
+          const { data: futureInstallments, error: fetchErr } = await supabase
             .from("lancamentos")
-            .update(omitDataCompra(updatePayload))
-            .eq("id", editItem.id);
-          if (e2) throw e2;
-        } else if (error) {
-          throw error;
+            .select("id, parcela_atual, total_parcelas, data")
+            .eq("parcela_grupo_id", editItem.parcela_grupo_id)
+            .gte("data", editItem.data)
+            .order("data", { ascending: true });
+          if (fetchErr) throw fetchErr;
+
+          await Promise.all(
+            (futureInstallments ?? []).map((inst) => {
+              const instDescricao = inst.parcela_atual && inst.total_parcelas
+                ? `${descricao} (${inst.parcela_atual}/${inst.total_parcelas})`
+                : descricao;
+              return supabase.from("lancamentos").update({
+                descricao: instDescricao,
+                valor: valorNum,
+                categoria,
+                loja,
+                comprovante_url: receiptPath || null,
+              }).eq("id", inst.id).then(({ error }) => { if (error) throw error; });
+            })
+          );
+
+          // Also update the date on the current installment
+          const datePayload = {
+            data: effectiveDataEdit,
+            data_compra: data,
+          };
+          const { error: dateErr } = await supabase.from("lancamentos").update(datePayload).eq("id", editItem.id);
+          if (isDataCompraSchemaError(dateErr)) {
+            const { error: e2 } = await supabase.from("lancamentos").update({ data: effectiveDataEdit }).eq("id", editItem.id);
+            if (e2) throw e2;
+          } else if (dateErr) {
+            throw dateErr;
+          }
+        } else {
+          const updatePayload = {
+            tipo, descricao, valor: valorNum,
+            data: effectiveDataEdit,
+            data_compra: data,
+            categoria, fixo,
+            metodo, cartao_id: metodo === "cartao" ? cartaoId || null : null,
+            total_parcelas: metodo === "cartao" ? parseInt(totalParcelas) : null,
+            loja, comprovante_url: receiptPath || null,
+          };
+          const { error } = await supabase.from("lancamentos").update(updatePayload).eq("id", editItem.id);
+          if (isDataCompraSchemaError(error)) {
+            const { error: e2 } = await supabase
+              .from("lancamentos")
+              .update(omitDataCompra(updatePayload))
+              .eq("id", editItem.id);
+            if (e2) throw e2;
+          } else if (error) {
+            throw error;
+          }
         }
       } else if (fixo && metodo !== "cartao") {
         // Fixed expense: repeat for every remaining month of the year.
