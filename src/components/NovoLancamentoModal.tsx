@@ -166,6 +166,7 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem }: Props) => {
             metodo: "cartao", cartao_id: cartaoId || null,
             parcela_atual: i + 1, total_parcelas: parcelas,
             parcela_grupo_id: grupoId, loja,
+            comprovante_url: receiptPath || null,
           };
         });
 

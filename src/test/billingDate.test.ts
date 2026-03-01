@@ -12,11 +12,11 @@ describe("Billing date logic", () => {
     expect(result).toBe("2026-02-05");
   });
 
-  it("purchase on closing date moves to next month", () => {
-    // Card closes on day 2; purchase on Feb 2 → the invoice is already
-    // closed that day, so the purchase belongs to the March invoice
+  it("purchase on closing date stays in same month", () => {
+    // Card closes on day 2; purchase on Feb 2 → the invoice closes that day
+    // so the purchase still belongs to the February invoice (day == closing day)
     const result = getEffectiveInvoiceDate("2026-02-02", 2);
-    expect(result).toBe("2026-03-02");
+    expect(result).toBe("2026-02-02");
   });
 
   it("purchase after closing date moves to next month", () => {
