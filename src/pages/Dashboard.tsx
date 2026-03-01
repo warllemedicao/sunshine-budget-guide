@@ -123,9 +123,19 @@ const Dashboard = () => {
   }, [stats.cartaoLanc, cartoes, faturas]);
 
   const deleteLancamento = useMutation({
-    mutationFn: async (id: string) => {
-      const { error } = await supabase.from("lancamentos").delete().eq("id", id);
-      if (error) throw error;
+    mutationFn: async (l: Tables<"lancamentos">) => {
+      if (l.parcela_grupo_id) {
+        // Delete this record and all future records in the same group
+        const { error } = await supabase
+          .from("lancamentos")
+          .delete()
+          .eq("parcela_grupo_id", l.parcela_grupo_id)
+          .gte("data", l.data);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from("lancamentos").delete().eq("id", l.id);
+        if (error) throw error;
+      }
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["lancamentos"] });
@@ -273,16 +283,14 @@ const Dashboard = () => {
                 {group.compras.map((l) => {
                   const cat = getCategoriaInfo(l.categoria);
                   const Icon = cat.icon;
+                  // Show the original user-chosen purchase date when available
+                  const displayDate = l.data_compra || l.data;
                   return (
                     <div key={l.id} className="flex items-center gap-2 rounded-md bg-secondary p-2">
-                      {/* Left: store indicator + description */}
+                      {/* Left: store logo + description */}
                       <div className="flex items-center gap-1.5 flex-1 min-w-0">
                         {l.loja ? (
-                          <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary/10 flex-shrink-0">
-                            <span className="text-[9px] font-bold text-primary leading-none text-center">
-                              {l.loja.slice(0, 3).toUpperCase()}
-                            </span>
-                          </div>
+                          <BrandLogo store={l.loja} fallbackIcon={<Icon className="h-3.5 w-3.5" style={{ color: cat.color }} />} fallbackBg={cat.color + "20"} />
                         ) : (
                           <div className="flex h-7 w-7 items-center justify-center rounded-md flex-shrink-0" style={{ backgroundColor: cat.color + "20" }}>
                             <Icon className="h-3.5 w-3.5" style={{ color: cat.color }} />
@@ -296,9 +304,9 @@ const Dashboard = () => {
                           ) : null}
                         </div>
                       </div>
-                      {/* Middle: purchase date */}
+                      {/* Middle: original purchase date */}
                       <p className="text-[10px] text-muted-foreground flex-shrink-0">
-                        {new Date(l.data + "T00:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}
+                        {new Date(displayDate + "T00:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}
                       </p>
                       {/* Right: value + actions */}
                       <div className="flex items-center gap-0.5 flex-shrink-0">
@@ -306,7 +314,7 @@ const Dashboard = () => {
                         <button onClick={() => openEdit(l)} className="p-1 text-muted-foreground hover:text-foreground">
                           <Edit2 className="h-3 w-3" />
                         </button>
-                        <button onClick={() => deleteLancamento.mutate(l.id)} className="p-1 text-muted-foreground hover:text-destructive">
+                        <button onClick={() => deleteLancamento.mutate(l)} className="p-1 text-muted-foreground hover:text-destructive">
                           <Trash2 className="h-3 w-3" />
                         </button>
                       </div>
@@ -412,6 +420,83 @@ const Dashboard = () => {
 };
 
 /* ---- Sub-components ---- */
+
+/**
+ * BrandLogo: shows a brand logo fetched from Clearbit Logo API.
+ * Falls back to the category icon if the logo cannot be loaded.
+ * When VITE_BRANDFETCH_CLIENT_ID is set, uses the Brandfetch CDN instead.
+ */
+const BrandLogo = ({
+  store,
+  fallbackIcon,
+  fallbackBg,
+}: {
+  store: string;
+  fallbackIcon: React.ReactNode;
+  fallbackBg: string;
+}) => {
+  const [logoSrc, setLogoSrc] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    if (!store) return;
+    setFailed(false);
+    // Derive a best-guess domain from the store name (try .com first, then .com.br)
+    const slug = store
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]/g, "");
+
+    const rawClientId = import.meta.env.VITE_BRANDFETCH_CLIENT_ID;
+    // Sanitize client ID: only allow alphanumeric chars and hyphens
+    const clientId = rawClientId ? String(rawClientId).replace(/[^a-zA-Z0-9-]/g, "") : null;
+
+    if (clientId) {
+      setLogoSrc(`https://cdn.brandfetch.io/${slug}.com/w/56/h/56?c=${clientId}`);
+    } else {
+      setLogoSrc(`https://logo.clearbit.com/${slug}.com`);
+    }
+  }, [store]);
+
+  const handleError = () => {
+    if (!failed && logoSrc) {
+      // Try .com.br domain before giving up
+      const slug = store
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-z0-9]/g, "");
+      const fallbackUrl = `https://logo.clearbit.com/${slug}.com.br`;
+      if (logoSrc !== fallbackUrl) {
+        setLogoSrc(fallbackUrl);
+        return;
+      }
+    }
+    setFailed(true);
+  };
+
+  if (failed || !logoSrc) {
+    return (
+      <div className="flex h-7 w-7 items-center justify-center rounded-md flex-shrink-0 bg-primary/10">
+        <span className="text-[9px] font-bold text-primary leading-none text-center">
+          {store.slice(0, 3).toUpperCase()}
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex h-7 w-7 items-center justify-center rounded-md flex-shrink-0 overflow-hidden bg-white">
+      <img
+        src={logoSrc}
+        alt={store}
+        className="h-full w-full object-contain"
+        onError={handleError}
+      />
+    </div>
+  );
+};
 
 const Section = ({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) => (
   <div className="space-y-2">
