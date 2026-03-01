@@ -21,6 +21,7 @@ import { ReceiptUploadButton } from '@/components/ReceiptUploadButton';
 import { ReceiptViewer } from '@/components/ReceiptViewer';
 import type { Tables } from "@/integrations/supabase/types";
 import { cn } from "@/lib/utils";
+import { useShareTarget } from "@/hooks/useShareTarget";
 
 const Dashboard = () => {
   const { user } = useAuth();
@@ -36,6 +37,16 @@ const Dashboard = () => {
   const [pagarCartaoId, setPagarCartaoId] = useState<string | null>(null);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [receiptLancamento, setReceiptLancamento] = useState<Tables<"lancamentos"> | null>(null);
+
+  const { sharedFile, clearSharedFile } = useShareTarget();
+
+  // Auto-open the new transaction modal when the app receives a shared receipt
+  useEffect(() => {
+    if (sharedFile && user) {
+      setEditItem(null);
+      setShowEdit(true);
+    }
+  }, [sharedFile, user]);
 
   const startDate = `${ano}-${String(mes + 1).padStart(2, "0")}-01`;
   const endDate = mes === 11 ? `${ano + 1}-01-01` : `${ano}-${String(mes + 2).padStart(2, "0")}-01`;
@@ -394,7 +405,13 @@ const Dashboard = () => {
         </div>
       )}
 
-      <NovoLancamentoModal open={showEdit} onOpenChange={setShowEdit} editItem={editItem} />
+      <NovoLancamentoModal
+        open={showEdit}
+        onOpenChange={setShowEdit}
+        editItem={editItem}
+        sharedFile={sharedFile}
+        onSharedFileConsumed={clearSharedFile}
+      />
 
       {/* Modal Comprovante Despesa Fixa */}
       <ReceiptDespesaFixaModal

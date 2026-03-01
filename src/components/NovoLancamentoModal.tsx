@@ -15,16 +15,22 @@ import { getEffectiveInvoiceDate } from "@/lib/billingDate";
 import type { Tables, TablesInsert } from "@/integrations/supabase/types";
 import { ReceiptUploadButton } from '@/components/ReceiptUploadButton';
 import { ReceiptViewer } from '@/components/ReceiptViewer';
+import { useReceipts } from '@/hooks/useReceipts';
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   editItem?: Tables<"lancamentos"> | null;
+  /** File shared from an external app (e.g. bank payment receipt). Auto-uploaded when the modal opens. */
+  sharedFile?: File | null;
+  /** Called after the shared file has been processed so the parent can clear it. */
+  onSharedFileConsumed?: () => void;
 }
 
-const NovoLancamentoModal = ({ open, onOpenChange, editItem }: Props) => {
+const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onSharedFileConsumed }: Props) => {
   const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { uploadReceipt, loading: uploadingShared } = useReceipts();
 
   const [tipo, setTipo] = useState<"receita" | "despesa">("despesa");
   const [descricao, setDescricao] = useState("");
@@ -48,6 +54,25 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem }: Props) => {
       if (data) setCartoes(data);
     });
   }, [user, open]);
+
+  // Auto-upload a file shared from an external app (Web Share Target).
+  // Only runs when the modal is opened for a new transaction (not editing).
+  // Dependencies intentionally limited: uploadReceipt and onSharedFileConsumed are
+  // stable references; re-running on editItem changes is not needed here.
+  useEffect(() => {
+    if (!open || !sharedFile || !user || editItem) return;
+    uploadReceipt(sharedFile, user.id)
+      .then((path) => {
+        if (path) {
+          setReceiptPath(path);
+          setReceiptFileName(sharedFile.name);
+        }
+      })
+      .finally(() => {
+        onSharedFileConsumed?.();
+      });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, sharedFile, user]);
 
   useEffect(() => {
     if (editItem) {
@@ -352,7 +377,12 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem }: Props) => {
           {/* SEÇÃO DE COMPROVANTE */}
           <div className="border-t pt-4">
             <h3 className="font-semibold mb-3 text-sm">📎 Comprovante</h3>
-            {receiptPath ? (
+            {uploadingShared ? (
+              <div className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg border border-gray-200 text-sm text-muted-foreground">
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                Carregando comprovante compartilhado...
+              </div>
+            ) : receiptPath ? (
               <ReceiptViewer
                 filePath={receiptPath}
                 fileName={receiptFileName || 'Comprovante'}
