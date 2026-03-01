@@ -12,7 +12,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { CATEGORIAS } from "@/lib/categories";
 import { cn } from "@/lib/utils";
 import { getEffectiveInvoiceDate } from "@/lib/billingDate";
-import type { Tables } from "@/integrations/supabase/types";
+import type { Tables, TablesInsert } from "@/integrations/supabase/types";
 import { ReceiptUploadButton } from '@/components/ReceiptUploadButton';
 import { ReceiptViewer } from '@/components/ReceiptViewer';
 interface Props {
@@ -84,6 +84,28 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem }: Props) => {
     setReceiptFileName("");
   };
 
+  // Helper: strip data_compra from a payload object or array (fallback when column is missing in DB)
+  const omitDataCompra = (payload: TablesInsert<"lancamentos">): Omit<TablesInsert<"lancamentos">, "data_compra"> => {
+    const { data_compra: _dc, ...rest } = payload;
+    return rest;
+  };
+
+  // Detect whether a Supabase/PostgREST error is caused by the data_compra column not existing
+  const isDataCompraSchemaError = (err: { message?: string; code?: string } | null) =>
+    err?.message?.includes("data_compra") || err?.code === "42703" || err?.code === "PGRST204";
+
+  // Wrapper: insert and retry without data_compra if the column is not yet in the schema
+  const insertLancamentos = async (payload: TablesInsert<"lancamentos"> | TablesInsert<"lancamentos">[]) => {
+    const { error } = await supabase.from("lancamentos").insert(payload);
+    if (isDataCompraSchemaError(error)) {
+      const fallback = Array.isArray(payload) ? payload.map(omitDataCompra) : omitDataCompra(payload);
+      const { error: e2 } = await supabase.from("lancamentos").insert(fallback as TablesInsert<"lancamentos">[] | TablesInsert<"lancamentos">);
+      if (e2) throw e2;
+    } else if (error) {
+      throw error;
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
@@ -107,25 +129,31 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem }: Props) => {
           const diaFechamento = selectedCartao?.dia_fechamento ?? 31;
           effectiveDataEdit = getEffectiveInvoiceDate(data, diaFechamento);
         }
-        const { error } = await supabase
-          .from("lancamentos")
-          .update({
-            tipo, descricao, valor: valorNum,
-            data: effectiveDataEdit,
-            data_compra: data,
-            categoria, fixo,
-            metodo, cartao_id: metodo === "cartao" ? cartaoId || null : null,
-            total_parcelas: metodo === "cartao" ? parseInt(totalParcelas) : null,
-            loja, comprovante_url: receiptPath || null,
-          })
-          .eq("id", editItem.id);
-        if (error) throw error;
+        const updatePayload = {
+          tipo, descricao, valor: valorNum,
+          data: effectiveDataEdit,
+          data_compra: data,
+          categoria, fixo,
+          metodo, cartao_id: metodo === "cartao" ? cartaoId || null : null,
+          total_parcelas: metodo === "cartao" ? parseInt(totalParcelas) : null,
+          loja, comprovante_url: receiptPath || null,
+        };
+        const { error } = await supabase.from("lancamentos").update(updatePayload).eq("id", editItem.id);
+        if (isDataCompraSchemaError(error)) {
+          const { error: e2 } = await supabase
+            .from("lancamentos")
+            .update(omitDataCompra(updatePayload))
+            .eq("id", editItem.id);
+          if (e2) throw e2;
+        } else if (error) {
+          throw error;
+        }
       } else if (fixo && metodo !== "cartao") {
         // Fixed expense: repeat for every remaining month of the year.
         const grupoId = crypto.randomUUID();
         const baseDate = new Date(data + "T00:00:00");
         const endMonth = 11; // December
-        const inserts = [];
+        const inserts: TablesInsert<"lancamentos">[] = [];
         for (let m = baseDate.getMonth(); m <= endMonth; m++) {
           const d = new Date(baseDate.getFullYear(), m, baseDate.getDate());
           inserts.push({
@@ -138,8 +166,7 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem }: Props) => {
             comprovante_url: receiptPath || null,
           });
         }
-        const { error } = await supabase.from("lancamentos").insert(inserts);
-        if (error) throw error;
+        await insertLancamentos(inserts);
       } else if (metodo === "cartao" && parseInt(totalParcelas) > 1) {
         const grupoId = crypto.randomUUID();
         const parcelas = parseInt(totalParcelas);
@@ -170,8 +197,7 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem }: Props) => {
           };
         });
 
-        const { error } = await supabase.from("lancamentos").insert(inserts);
-        if (error) throw error;
+        await insertLancamentos(inserts);
       } else {
         // For single-installment card purchases, also apply the closing-date rule.
         let effectiveData = data;
@@ -180,14 +206,13 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem }: Props) => {
           const diaFechamento = selectedCartao?.dia_fechamento ?? 31;
           effectiveData = getEffectiveInvoiceDate(data, diaFechamento);
         }
-        const { error } = await supabase.from("lancamentos").insert({
+        await insertLancamentos({
           user_id: user.id, tipo, descricao, valor: valorNum, data: effectiveData,
           // Preserve the user-chosen purchase date for display
           data_compra: data,
           categoria, fixo, metodo, cartao_id: metodo === "cartao" ? cartaoId || null : null, loja,
           comprovante_url: receiptPath || null,
         });
-        if (error) throw error;
       }
 
       queryClient.invalidateQueries({ queryKey: ["lancamentos"] });
