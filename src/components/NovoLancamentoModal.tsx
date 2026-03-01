@@ -11,6 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { CATEGORIAS } from "@/lib/categories";
 import { cn } from "@/lib/utils";
+import { getEffectiveInvoiceDate } from "@/lib/billingDate";
 import type { Tables } from "@/integrations/supabase/types";
 import { ReceiptUploadButton } from '@/components/ReceiptUploadButton';
 import { ReceiptViewer } from '@/components/ReceiptViewer';
@@ -112,7 +113,6 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem }: Props) => {
         const grupoId = crypto.randomUUID();
         const parcelas = parseInt(totalParcelas);
         const valorParcela = +(valorNum / parcelas).toFixed(2);
-        const baseDate = new Date(data + "T00:00:00");
 
         // Determine the correct invoice month for the first installment.
         // If the purchase day is past the card's closing day, the purchase
@@ -120,10 +120,8 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem }: Props) => {
         // Fallback to 31 intentionally: if card not found, no date shift occurs.
         const selectedCartao = cartoes.find((c) => c.id === cartaoId);
         const diaFechamento = selectedCartao?.dia_fechamento ?? 31;
-        const startDate = new Date(baseDate);
-        if (baseDate.getDate() > diaFechamento) {
-          startDate.setMonth(startDate.getMonth() + 1);
-        }
+        const startDateStr = getEffectiveInvoiceDate(data, diaFechamento);
+        const startDate = new Date(startDateStr + "T00:00:00");
 
         const inserts = Array.from({ length: parcelas }, (_, i) => {
           const d = new Date(startDate);
@@ -145,12 +143,7 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem }: Props) => {
         if (metodo === "cartao" && cartaoId) {
           const selectedCartao = cartoes.find((c) => c.id === cartaoId);
           const diaFechamento = selectedCartao?.dia_fechamento ?? 31;
-          const purchaseDate = new Date(data + "T00:00:00");
-          if (purchaseDate.getDate() > diaFechamento) {
-            const next = new Date(purchaseDate);
-            next.setMonth(next.getMonth() + 1);
-            effectiveData = next.toISOString().split("T")[0];
-          }
+          effectiveData = getEffectiveInvoiceDate(data, diaFechamento);
         }
         const { error } = await supabase.from("lancamentos").insert({
           user_id: user.id, tipo, descricao, valor: valorNum, data: effectiveData, categoria,
