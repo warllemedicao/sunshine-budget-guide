@@ -1,20 +1,9 @@
 import { describe, it, expect } from "vitest";
+import { getEffectiveInvoiceDate } from "@/lib/billingDate";
 
 /**
- * Billing date logic: if a card purchase is made AFTER the card's closing date,
- * the first installment falls into the NEXT month's invoice.
- *
- * This function mirrors the logic in NovoLancamentoModal.tsx.
+ * Tests for the billing date closing-date rule defined in @/lib/billingDate.
  */
-function getEffectiveInvoiceDate(purchaseDateStr: string, diaFechamento: number): string {
-  const purchaseDate = new Date(purchaseDateStr + "T00:00:00");
-  if (purchaseDate.getDate() > diaFechamento) {
-    const next = new Date(purchaseDate);
-    next.setMonth(next.getMonth() + 1);
-    return next.toISOString().split("T")[0];
-  }
-  return purchaseDateStr;
-}
 
 describe("Billing date logic", () => {
   it("purchase before closing date stays in same month", () => {
@@ -45,5 +34,11 @@ describe("Billing date logic", () => {
     // Card closes on day 20; purchase on Jan 25 → moves to February
     const result = getEffectiveInvoiceDate("2026-01-25", 20);
     expect(result).toBe("2026-02-25");
+  });
+
+  it("purchase after closing date with month-end overflow clamps to last day", () => {
+    // Card closes on day 15; purchase on Jan 31 → moves to Feb 28 (not March 3)
+    const result = getEffectiveInvoiceDate("2026-01-31", 15);
+    expect(result).toBe("2026-02-28");
   });
 });
