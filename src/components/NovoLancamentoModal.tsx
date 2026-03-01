@@ -109,6 +109,26 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem }: Props) => {
           })
           .eq("id", editItem.id);
         if (error) throw error;
+      } else if (fixo && metodo !== "cartao") {
+        // Fixed expense: repeat for every remaining month of the year.
+        const grupoId = crypto.randomUUID();
+        const baseDate = new Date(data + "T00:00:00");
+        const endMonth = 11; // December
+        const inserts = [];
+        for (let m = baseDate.getMonth(); m <= endMonth; m++) {
+          const d = new Date(baseDate.getFullYear(), m, baseDate.getDate());
+          inserts.push({
+            user_id: user.id, tipo, descricao, valor: valorNum,
+            data: d.toISOString().split("T")[0],
+            data_compra: d.toISOString().split("T")[0],
+            categoria, fixo: true,
+            metodo, cartao_id: null,
+            parcela_grupo_id: grupoId, loja,
+            comprovante_url: receiptPath || null,
+          });
+        }
+        const { error } = await supabase.from("lancamentos").insert(inserts);
+        if (error) throw error;
       } else if (metodo === "cartao" && parseInt(totalParcelas) > 1) {
         const grupoId = crypto.randomUUID();
         const parcelas = parseInt(totalParcelas);
@@ -128,7 +148,10 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem }: Props) => {
           d.setMonth(d.getMonth() + i);
           return {
             user_id: user.id, tipo, descricao: `${descricao} (${i + 1}/${parcelas})`,
-            valor: valorParcela, data: d.toISOString().split("T")[0], categoria, fixo: false,
+            valor: valorParcela, data: d.toISOString().split("T")[0],
+            // Original purchase date is the same for all installments
+            data_compra: data,
+            categoria, fixo: false,
             metodo: "cartao", cartao_id: cartaoId || null,
             parcela_atual: i + 1, total_parcelas: parcelas,
             parcela_grupo_id: grupoId, loja,
@@ -146,8 +169,10 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem }: Props) => {
           effectiveData = getEffectiveInvoiceDate(data, diaFechamento);
         }
         const { error } = await supabase.from("lancamentos").insert({
-          user_id: user.id, tipo, descricao, valor: valorNum, data: effectiveData, categoria,
-          fixo, metodo, cartao_id: metodo === "cartao" ? cartaoId || null : null, loja,
+          user_id: user.id, tipo, descricao, valor: valorNum, data: effectiveData,
+          // Preserve the user-chosen purchase date for display
+          data_compra: data,
+          categoria, fixo, metodo, cartao_id: metodo === "cartao" ? cartaoId || null : null, loja,
           comprovante_url: receiptPath || null,
         });
         if (error) throw error;
@@ -167,7 +192,17 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem }: Props) => {
   const handleDelete = async () => {
     if (!editItem) return;
     setLoading(true);
-    const { error } = await supabase.from("lancamentos").delete().eq("id", editItem.id);
+    let error: any;
+    if (editItem.parcela_grupo_id) {
+      // Delete this record and all future records in the same group
+      ({ error } = await supabase
+        .from("lancamentos")
+        .delete()
+        .eq("parcela_grupo_id", editItem.parcela_grupo_id)
+        .gte("data", editItem.data));
+    } else {
+      ({ error } = await supabase.from("lancamentos").delete().eq("id", editItem.id));
+    }
     if (error) {
       toast({ title: "Erro ao excluir", variant: "destructive" });
     } else {

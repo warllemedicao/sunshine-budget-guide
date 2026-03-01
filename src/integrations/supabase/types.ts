@@ -113,6 +113,7 @@ export type Database = {
           comprovante_url: string | null
           created_at: string
           data: string
+          data_compra: string | null
           descricao: string
           fixo: boolean
           id: string
@@ -132,6 +133,7 @@ export type Database = {
           comprovante_url?: string | null
           created_at?: string
           data?: string
+          data_compra?: string | null
           descricao?: string
           fixo?: boolean
           id?: string
@@ -151,6 +153,7 @@ export type Database = {
           comprovante_url?: string | null
           created_at?: string
           data?: string
+          data_compra?: string | null
           descricao?: string
           fixo?: boolean
           id?: string
