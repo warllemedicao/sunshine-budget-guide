@@ -54,7 +54,8 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem }: Props) => {
       setTipo(editItem.tipo as "receita" | "despesa");
       setDescricao(editItem.descricao);
       setValor(String(editItem.valor));
-      setData(editItem.data);
+      // For card purchases, prefer the original user-chosen date (data_compra) over the effective invoice date (data)
+      setData(editItem.data_compra || editItem.data);
       setCategoria(editItem.categoria);
       setFixo(editItem.fixo);
       setMetodo(editItem.metodo as "avista" | "cartao");
@@ -99,10 +100,20 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem }: Props) => {
       if (isNaN(valorNum) || valorNum <= 0) throw new Error("Valor inválido");
 
       if (editItem) {
+        // For card purchases, recalculate the effective invoice date from the user-chosen date.
+        let effectiveDataEdit = data;
+        if (metodo === "cartao" && cartaoId) {
+          const selectedCartao = cartoes.find((c) => c.id === cartaoId);
+          const diaFechamento = selectedCartao?.dia_fechamento ?? 31;
+          effectiveDataEdit = getEffectiveInvoiceDate(data, diaFechamento);
+        }
         const { error } = await supabase
           .from("lancamentos")
           .update({
-            tipo, descricao, valor: valorNum, data, categoria, fixo,
+            tipo, descricao, valor: valorNum,
+            data: effectiveDataEdit,
+            data_compra: data,
+            categoria, fixo,
             metodo, cartao_id: metodo === "cartao" ? cartaoId || null : null,
             total_parcelas: metodo === "cartao" ? parseInt(totalParcelas) : null,
             loja, comprovante_url: receiptPath || null,
