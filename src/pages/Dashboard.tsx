@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import MonthSelector from "@/components/MonthSelector";
 import NovoLancamentoModal from "@/components/NovoLancamentoModal";
 import { formatCurrency } from "@/lib/formatters";
@@ -37,6 +38,7 @@ const Dashboard = () => {
   const [pagarCartaoId, setPagarCartaoId] = useState<string | null>(null);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [receiptLancamento, setReceiptLancamento] = useState<Tables<"lancamentos"> | null>(null);
+  const [pendingDeleteItem, setPendingDeleteItem] = useState<Tables<"lancamentos"> | null>(null);
 
   const { sharedFile, clearSharedFile } = useShareTarget();
 
@@ -111,6 +113,10 @@ const Dashboard = () => {
     setShowEdit(true);
   };
 
+  const closePendingDelete = (open: boolean) => {
+    if (!open) setPendingDeleteItem(null);
+  };
+
   // Group card expenses by card, including cards with no expenses
   const cartaoGroups = useMemo(() => {
     const groups = new Map<string, { cartao: Tables<"cartoes">; total: number; pago: boolean; fatura: Tables<"faturas"> | null; compras: Tables<"lancamentos">[] }>();
@@ -148,9 +154,15 @@ const Dashboard = () => {
         if (error) throw error;
       }
     },
-    onSuccess: () => {
+    onSuccess: (_data, l) => {
       qc.invalidateQueries({ queryKey: ["lancamentos"] });
-      toast({ title: "Compra removida!" });
+      toast({
+        title: l.parcela_grupo_id ? "Parcelas removidas!" : "Compra removida!",
+        description: l.parcela_grupo_id ? "Esta e todas as parcelas futuras foram excluídas." : undefined,
+      });
+    },
+    onError: (err: any) => {
+      toast({ title: "Erro ao excluir", description: err.message, variant: "destructive" });
     },
   });
 
@@ -325,7 +337,10 @@ const Dashboard = () => {
                         <button onClick={() => openEdit(l)} className="p-1 text-muted-foreground hover:text-foreground">
                           <Edit2 className="h-3 w-3" />
                         </button>
-                        <button onClick={() => deleteLancamento.mutate(l)} className="p-1 text-muted-foreground hover:text-destructive">
+                        <button
+                          onClick={() => l.parcela_grupo_id ? setPendingDeleteItem(l) : deleteLancamento.mutate(l)}
+                          className="p-1 text-muted-foreground hover:text-destructive"
+                        >
                           <Trash2 className="h-3 w-3" />
                         </button>
                       </div>
@@ -432,6 +447,32 @@ const Dashboard = () => {
         valorTotal={cartaoGroups.find((g) => g.cartao.id === pagarCartaoId)?.total ?? 0}
         faturaExistente={faturas.find((f) => f.cartao_id === pagarCartaoId) ?? null}
       />
+
+      {/* Confirmation dialog for installment group deletion */}
+      <AlertDialog open={!!pendingDeleteItem} onOpenChange={closePendingDelete}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir parcelamento</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta ação irá excluir esta parcela e todas as parcelas futuras do mesmo parcelamento. Deseja continuar?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                if (pendingDeleteItem) {
+                  deleteLancamento.mutate(pendingDeleteItem);
+                  setPendingDeleteItem(null);
+                }
+              }}
+            >
+              Excluir tudo
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
