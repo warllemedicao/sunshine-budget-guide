@@ -301,12 +301,11 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
     setLoading(true);
     let error: any;
     if (editItem.parcela_grupo_id) {
-      // Delete this record and all future records in the same group
+      // Delete ALL records in the same installment group (past, current and future)
       ({ error } = await supabase
         .from("lancamentos")
         .delete()
-        .eq("parcela_grupo_id", editItem.parcela_grupo_id)
-        .gte("data", editItem.data));
+        .eq("parcela_grupo_id", editItem.parcela_grupo_id));
     } else {
       ({ error } = await supabase.from("lancamentos").delete().eq("id", editItem.id));
     }
@@ -315,8 +314,8 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
     } else {
       queryClient.invalidateQueries({ queryKey: ["lancamentos"] });
       toast({
-        title: editItem.parcela_grupo_id ? "Parcelas excluídas!" : "Excluído!",
-        description: editItem.parcela_grupo_id ? "Esta e todas as parcelas futuras foram removidas." : undefined,
+        title: editItem.parcela_grupo_id ? "Parcelamento excluído!" : "Excluído!",
+        description: editItem.parcela_grupo_id ? "Todas as parcelas do parcelamento foram removidas." : undefined,
       });
       onOpenChange(false);
     }
@@ -356,8 +355,21 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
                 onChange={(e) => setValor(e.target.value)} required />
             </div>
             <div className="space-y-2">
-              <Label>Data</Label>
+              <Label>{metodo === "cartao" ? "Data da Compra" : "Data"}</Label>
               <Input type="date" value={data} onChange={(e) => setData(e.target.value)} required />
+              {metodo === "cartao" && cartaoId && data && (() => {
+                const selectedCartao = cartoes.find((c) => c.id === cartaoId);
+                const diaFechamento = selectedCartao?.dia_fechamento ?? 31;
+                const effectiveDate = getEffectiveInvoiceDate(data, diaFechamento);
+                const effectiveDateObj = new Date(effectiveDate + "T00:00:00");
+                if (isNaN(effectiveDateObj.getTime())) return null;
+                const effectiveMonth = effectiveDateObj.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+                return (
+                  <p className="text-[10px] text-muted-foreground leading-tight">
+                    📅 Fatura de <span className="font-medium text-primary">{effectiveMonth}</span>
+                  </p>
+                );
+              })()}
             </div>
           </div>
 
