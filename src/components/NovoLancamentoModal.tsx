@@ -314,7 +314,10 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
       toast({ title: "Erro ao excluir", variant: "destructive" });
     } else {
       queryClient.invalidateQueries({ queryKey: ["lancamentos"] });
-      toast({ title: "Excluído!" });
+      toast({
+        title: editItem.parcela_grupo_id ? "Parcelas excluídas!" : "Excluído!",
+        description: editItem.parcela_grupo_id ? "Esta e todas as parcelas futuras foram removidas." : undefined,
+      });
       onOpenChange(false);
     }
     setLoading(false);
