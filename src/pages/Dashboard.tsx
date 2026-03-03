@@ -23,6 +23,7 @@ import { ReceiptViewer } from '@/components/ReceiptViewer';
 import type { Tables } from "@/integrations/supabase/types";
 import { cn } from "@/lib/utils";
 import { useShareTarget } from "@/hooks/useShareTarget";
+import { searchBrandfetchDomain } from "@/lib/brandfetch";
 
 const Dashboard = () => {
   const { user } = useAuth();
@@ -479,9 +480,16 @@ const Dashboard = () => {
 /* ---- Sub-components ---- */
 
 /**
- * BrandLogo: shows a brand logo fetched from Clearbit Logo API.
- * Falls back to the category icon if the logo cannot be loaded.
- * When VITE_BRANDFETCH_CLIENT_ID is set, uses the Brandfetch CDN instead.
+ * BrandLogo: shows a brand logo for a store/company name.
+ *
+ * When VITE_BRANDFETCH_API_KEY is set, the Brandfetch Search API is first called
+ * to resolve the company name to its real domain (e.g. "Amazon" → "amazon.com"),
+ * so the logo lookup is accurate rather than guessed.
+ *
+ * When VITE_BRANDFETCH_CLIENT_ID is also set, logos are fetched from the Brandfetch
+ * CDN (cdn.brandfetch.io); otherwise the Clearbit Logo API is used.
+ *
+ * Falls back to the category icon if no logo can be loaded.
  */
 const BrandLogo = ({
   store,
@@ -498,7 +506,8 @@ const BrandLogo = ({
   useEffect(() => {
     if (!store) return;
     setFailed(false);
-    // Derive a best-guess domain from the store name (try .com first, then .com.br)
+    setLogoSrc(null);
+
     const slug = store
       .toLowerCase()
       .normalize("NFD")
@@ -509,22 +518,34 @@ const BrandLogo = ({
     // Sanitize client ID: only allow alphanumeric chars and hyphens
     const clientId = rawClientId ? String(rawClientId).replace(/[^a-zA-Z0-9-]/g, "") : null;
 
-    if (clientId) {
-      setLogoSrc(`https://cdn.brandfetch.io/${slug}.com/w/56/h/56?c=${clientId}`);
-    } else {
-      setLogoSrc(`https://logo.clearbit.com/${slug}.com`);
-    }
+    let cancelled = false;
+    // Use the Brandfetch Search API to get the real domain when an API key is available.
+    // Falls back to a slug-derived domain if the search returns nothing.
+    searchBrandfetchDomain(store).then((domain) => {
+      if (cancelled) return;
+      const effectiveDomain = domain ?? `${slug}.com`;
+      if (clientId) {
+        setLogoSrc(`https://cdn.brandfetch.io/${effectiveDomain}/w/56/h/56?c=${clientId}`);
+      } else {
+        setLogoSrc(`https://logo.clearbit.com/${effectiveDomain}`);
+      }
+    });
+    return () => { cancelled = true; };
   }, [store]);
 
   const handleError = () => {
     if (!failed && logoSrc) {
-      // Try .com.br domain before giving up
+      // Try .com.br domain before giving up, using the same API that was configured
       const slug = store
         .toLowerCase()
         .normalize("NFD")
         .replace(/[\u0300-\u036f]/g, "")
         .replace(/[^a-z0-9]/g, "");
-      const fallbackUrl = `https://logo.clearbit.com/${slug}.com.br`;
+      const rawClientId = import.meta.env.VITE_BRANDFETCH_CLIENT_ID;
+      const clientId = rawClientId ? String(rawClientId).replace(/[^a-zA-Z0-9-]/g, "") : null;
+      const fallbackUrl = clientId
+        ? `https://cdn.brandfetch.io/${slug}.com.br/w/56/h/56?c=${clientId}`
+        : `https://logo.clearbit.com/${slug}.com.br`;
       if (logoSrc !== fallbackUrl) {
         setLogoSrc(fallbackUrl);
         return;
@@ -535,10 +556,8 @@ const BrandLogo = ({
 
   if (failed || !logoSrc) {
     return (
-      <div className="flex h-7 w-7 items-center justify-center rounded-md flex-shrink-0 bg-primary/10">
-        <span className="text-[9px] font-bold text-primary leading-none text-center">
-          {store.slice(0, 3).toUpperCase()}
-        </span>
+      <div className="flex h-7 w-7 items-center justify-center rounded-md flex-shrink-0" style={{ backgroundColor: fallbackBg }}>
+        {fallbackIcon}
       </div>
     );
   }
