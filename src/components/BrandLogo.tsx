@@ -49,9 +49,11 @@ const BrandLogo = ({ store, fallbackIcon, fallbackBg, size = 28 }: BrandLogoProp
 
     const clientId = getClientId();
 
+    console.log("Buscando logo para:", store);
+
     let cancelled = false;
     // Use the Brandfetch Search API to get the real domain when an API key is available.
-    // If the search returns nothing, fall back to Google Favicon using the store name.
+    // If the search returns nothing, fall back to clearbit using the first word as domain.
     searchBrandfetchDomain(store).then((domain) => {
       if (cancelled) return;
       if (domain) {
@@ -61,11 +63,13 @@ const BrandLogo = ({ store, fallbackIcon, fallbackBg, size = 28 }: BrandLogoProp
           setLogoSrc(`https://logo.clearbit.com/${domain}`);
         }
       } else {
-        // Brandfetch found no domain; skip straight to Google Favicon with the store name.
-        // Google's s2/favicons service resolves business names (not just bare domains) to
-        // their known web presence, which works well for local businesses listed on Google.
-        setLogoSrc(`https://www.google.com/s2/favicons?domain=${encodeURIComponent(store)}&sz=128`);
-        setFallbackStep(2); // skip first-word fallbacks; next failure goes to category icon
+        // Brandfetch found no domain; try clearbit with firstWord.com (e.g. youtube → youtube.com).
+        // If clearbit fails, handleError will try the Google Favicon with the full store name next.
+        const firstWord = store.trim().split(/\s+/)[0].toLowerCase().replace(/[^a-z0-9-]/g, "");
+        setLogoSrc(clientId
+          ? `https://cdn.brandfetch.io/${firstWord}.com/w/56/h/56?c=${clientId}`
+          : `https://logo.clearbit.com/${firstWord}.com`);
+        setFallbackStep(1); // firstWord.com already being tried; next failure: Google favicon
       }
       setLoading(false);
     });
