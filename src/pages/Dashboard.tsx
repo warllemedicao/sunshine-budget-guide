@@ -507,9 +507,13 @@ const LancamentoRow = ({ item, onClick }: { item: Tables<"lancamentos">; onClick
   const Icon = cat.icon;
   return (
     <button onClick={onClick} className="flex w-full items-center gap-3 rounded-lg bg-card p-3 text-left shadow-sm hover:shadow-md transition-shadow border border-border">
-      <div className="flex h-9 w-9 items-center justify-center rounded-lg" style={{ backgroundColor: cat.color + "20" }}>
-        <Icon className="h-4 w-4" style={{ color: cat.color }} />
-      </div>
+      {item.loja ? (
+        <BrandLogo store={item.loja} size={36} fallbackIcon={<Icon className="h-4 w-4" style={{ color: cat.color }} />} fallbackBg={cat.color + "20"} />
+      ) : (
+        <div className="flex h-9 w-9 items-center justify-center rounded-lg" style={{ backgroundColor: cat.color + "20" }}>
+          <Icon className="h-4 w-4" style={{ color: cat.color }} />
+        </div>
+      )}
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium truncate">{item.descricao}</p>
         <p className="text-xs text-muted-foreground">{cat.label}{item.loja ? ` · ${item.loja}` : ""}</p>
