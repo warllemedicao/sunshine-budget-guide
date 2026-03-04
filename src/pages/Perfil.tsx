@@ -9,9 +9,10 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { formatCurrency } from "@/lib/formatters";
-import { User, CreditCard, Plus, Trash2, Edit2, LogOut, Check, X } from "lucide-react";
+import { User, CreditCard, Plus, Trash2, Edit2, LogOut, Check, X, Wand2 } from "lucide-react";
 import type { Tables, TablesInsert } from "@/integrations/supabase/types";
 import BrandLogo from "@/components/BrandLogo";
+import { backfillMerchantLogos } from "@/lib/merchantLogo";
 
 const Perfil = () => {
   const { user, signOut } = useAuth();
@@ -44,6 +45,11 @@ const Perfil = () => {
   const [showCartaoModal, setShowCartaoModal] = useState(false);
   const [editCartao, setEditCartao] = useState<Tables<"cartoes"> | null>(null);
 
+  // Backfill state
+  const [backfilling, setBackfilling] = useState(false);
+  const [backfillProgress, setBackfillProgress] = useState<{ done: number; total: number; current: string } | null>(null);
+  const [backfillResult, setBackfillResult] = useState<{ processed: number; succeeded: number; failed: number } | null>(null);
+
   useEffect(() => {
     if (profile) {
       setNome(profile.nome);
@@ -73,6 +79,27 @@ const Perfil = () => {
       toast({ title: "Cartão removido!" });
     },
   });
+
+  const handleBackfill = async () => {
+    if (!user) return;
+    setBackfilling(true);
+    setBackfillResult(null);
+    setBackfillProgress({ done: 0, total: 0, current: "" });
+    const result = await backfillMerchantLogos(user.id, (done, total, current) => {
+      setBackfillProgress({ done, total, current });
+    });
+    setBackfillResult(result);
+    setBackfilling(false);
+    if (result.processed === 0) {
+      toast({ title: "Nenhum lançamento sem logo encontrado." });
+    } else {
+      toast({
+        title: `${result.succeeded} logo(s) recuperado(s)!`,
+        description: result.failed > 0 ? `${result.failed} loja(s) não encontrada(s).` : undefined,
+      });
+    }
+    qc.invalidateQueries({ queryKey: ["lancamentos"] });
+  };
 
   return (
     <div className="mx-auto max-w-lg space-y-5 p-4">
@@ -141,6 +168,59 @@ const Perfil = () => {
               </div>
             </div>
           ))}
+        </CardContent>
+      </Card>
+
+      {/* Logo backfill card */}
+      <Card>
+        <CardHeader className="flex flex-row items-center gap-3 pb-2">
+          <Wand2 className="h-5 w-5 text-primary" />
+          <CardTitle className="text-base">Recuperar logos antigos</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Preenche automaticamente as logos dos lançamentos que ainda não têm imagem salva.
+          </p>
+
+          {backfilling && backfillProgress && (
+            <div className="space-y-1">
+              <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                <div
+                  className="h-full bg-primary transition-all"
+                  style={{
+                    width: backfillProgress.total > 0
+                      ? `${Math.round((backfillProgress.done / backfillProgress.total) * 100)}%`
+                      : "0%",
+                  }}
+                />
+              </div>
+              <p className="text-xs text-muted-foreground truncate">
+                {backfillProgress.total === 0
+                  ? "Buscando lançamentos…"
+                  : backfillProgress.done < backfillProgress.total
+                    ? `${backfillProgress.done}/${backfillProgress.total} — ${backfillProgress.current}`
+                    : "Concluído!"}
+              </p>
+            </div>
+          )}
+
+          {backfillResult && !backfilling && (
+            <p className="text-sm">
+              {backfillResult.processed === 0
+                ? "Nenhum lançamento sem logo encontrado."
+                : `✅ ${backfillResult.succeeded} recuperado(s)${backfillResult.failed > 0 ? `, ❌ ${backfillResult.failed} não encontrado(s)` : ""}.`}
+            </p>
+          )}
+
+          <Button
+            variant="secondary"
+            className="w-full"
+            onClick={handleBackfill}
+            disabled={backfilling}
+          >
+            <Wand2 className="h-4 w-4 mr-2" />
+            {backfilling ? "Recuperando…" : "Recuperar logos"}
+          </Button>
         </CardContent>
       </Card>
 

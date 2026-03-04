@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { searchBrandfetchDomain } from "@/lib/brandfetch";
 
 const BUCKET = "merchant-logos";
 const CACHE_NAME = "merchant-logos-v1";
@@ -121,4 +122,91 @@ export async function saveMerchantLogoUrl(
   if (error) {
     console.warn("[MerchantLogo] DB update error:", error.message);
   }
+}
+
+/**
+ * Scans all of the user's lancamentos that have a store name (loja) but no
+ * merchant_logo_url, and retroactively resolves + saves logos for them.
+ *
+ * Resolution order per unique store:
+ *   1. Supabase Storage (logo already uploaded by another session)
+ *   2. Brandfetch Search → Brandfetch CDN / Clearbit → upload to Supabase
+ *   3. Google Favicon → upload to Supabase
+ *
+ * @param userId    The authenticated user's id (used to scope the query).
+ * @param onProgress  Optional callback called after each store is processed.
+ *                    Receives (doneCount, totalCount, currentStoreName).
+ * @returns Object with { processed, succeeded, failed } counts.
+ */
+export async function backfillMerchantLogos(
+  userId: string,
+  onProgress?: (done: number, total: number, currentStore: string) => void,
+): Promise<{ processed: number; succeeded: number; failed: number }> {
+  // Fetch all lancamentos with a store name but no logo URL for this user.
+  const { data, error } = await supabase
+    .from("lancamentos")
+    .select("loja")
+    .eq("user_id", userId)
+    .not("loja", "is", null)
+    .neq("loja", "")
+    .is("merchant_logo_url", null);
+
+  if (error) {
+    console.warn("[backfillMerchantLogos] Query error:", error.message);
+    return { processed: 0, succeeded: 0, failed: 0 };
+  }
+
+  // Deduplicate store names so we only hit the APIs once per unique store.
+  const stores = [
+    ...new Set((data ?? []).map((r) => r.loja as string).filter(Boolean)),
+  ];
+  const total = stores.length;
+  let succeeded = 0;
+  let failed = 0;
+
+  const rawClientId = import.meta.env.VITE_BRANDFETCH_CLIENT_ID;
+  const clientId = rawClientId
+    ? String(rawClientId).replace(/[^a-zA-Z0-9-]/g, "")
+    : null;
+
+  for (let i = 0; i < stores.length; i++) {
+    const store = stores[i];
+    onProgress?.(i, total, store);
+
+    try {
+      // Step 1: Check Supabase Storage (already uploaded by another session).
+      const supabaseUrl = await getLogoFromSupabase(store);
+      if (supabaseUrl) {
+        await saveMerchantLogoUrl(store, supabaseUrl);
+        succeeded++;
+        continue;
+      }
+
+      // Step 2: Resolve via external APIs.
+      const domain = await searchBrandfetchDomain(store);
+      let externalUrl: string;
+      if (domain) {
+        externalUrl = clientId
+          ? `https://cdn.brandfetch.io/${domain}/w/56/h/56?c=${clientId}`
+          : `https://logo.clearbit.com/${domain}`;
+      } else {
+        externalUrl = `https://www.google.com/s2/favicons?domain=${encodeURIComponent(store)}&sz=128`;
+      }
+
+      // Upload to Supabase Storage (also caches locally).
+      const publicUrl = await uploadLogoToSupabase(store, externalUrl);
+      if (publicUrl) {
+        await saveMerchantLogoUrl(store, publicUrl);
+        succeeded++;
+      } else {
+        failed++;
+      }
+    } catch (err) {
+      console.warn(`[backfillMerchantLogos] Failed for "${store}":`, err);
+      failed++;
+    }
+  }
+
+  onProgress?.(total, total, "");
+  return { processed: total, succeeded, failed };
 }
