@@ -26,6 +26,7 @@ interface BrandLogoProps {
 const BrandLogo = ({ store, fallbackIcon, fallbackBg, size = 28 }: BrandLogoProps) => {
   const [logoSrc, setLogoSrc] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
+  const [fallbackStep, setFallbackStep] = useState(0);
 
   const toSlug = (name: string) =>
     name
@@ -43,9 +44,11 @@ const BrandLogo = ({ store, fallbackIcon, fallbackBg, size = 28 }: BrandLogoProp
     if (!store) {
       setLogoSrc(null);
       setFailed(false);
+      setFallbackStep(0);
       return;
     }
     setFailed(false);
+    setFallbackStep(0);
     setLogoSrc(null);
 
     const slug = toSlug(store);
@@ -67,19 +70,22 @@ const BrandLogo = ({ store, fallbackIcon, fallbackBg, size = 28 }: BrandLogoProp
   }, [store]);
 
   const handleError = () => {
-    if (!failed && logoSrc) {
-      // Try .com.br domain before giving up, using the same API that was configured
+    if (fallbackStep < 2) {
       const slug = toSlug(store);
       const clientId = getClientId();
-      const fallbackUrl = clientId
-        ? `https://cdn.brandfetch.io/${slug}.com.br/w/56/h/56?c=${clientId}`
-        : `https://logo.clearbit.com/${slug}.com.br`;
-      if (logoSrc !== fallbackUrl) {
-        setLogoSrc(fallbackUrl);
-        return;
-      }
+      // Ordered list of fallback URLs to try before giving up.
+      // Google Favicon API (tier 3) requires no API key and covers most domains.
+      const fallbacks: string[] = [
+        clientId
+          ? `https://cdn.brandfetch.io/${slug}.com.br/w/56/h/56?c=${clientId}`
+          : `https://logo.clearbit.com/${slug}.com.br`,
+        `https://www.google.com/s2/favicons?domain=${slug}.com.br&sz=64`,
+      ];
+      setLogoSrc(fallbacks[fallbackStep]);
+      setFallbackStep((prev) => prev + 1);
+    } else {
+      setFailed(true);
     }
-    setFailed(true);
   };
 
   const style = { width: size, height: size };

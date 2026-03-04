@@ -255,7 +255,15 @@ const Dashboard = () => {
               onClick={() => setExpandedCard(expandedCard === cartao.id ? null : cartao.id)}
               className="w-full rounded-lg bg-card border border-border p-2 text-left hover:shadow-sm transition-shadow"
             >
-              <p className="text-xs font-medium truncate">{cartao.instituicao}</p>
+              <div className="flex items-center gap-1.5 mb-0.5">
+                <BrandLogo
+                  store={cartao.instituicao}
+                  size={20}
+                  fallbackIcon={<CreditCard className="h-3 w-3 text-primary" />}
+                  fallbackBg="hsl(var(--primary) / 0.1)"
+                />
+                <p className="text-xs font-medium truncate">{cartao.instituicao}</p>
+              </div>
               <p className="text-sm font-semibold">{formatCurrency(total)}</p>
               <div className="flex items-center justify-between mt-1">
                 <span className={cn("text-[10px]", pago ? "text-success" : "text-warning")}>
@@ -284,8 +292,13 @@ const Dashboard = () => {
                   <p className="text-xs text-muted-foreground">Fecha dia {group.cartao.dia_fechamento}</p>
                 </div>
                 <div className="flex flex-col items-center">
-                  <CreditCard className="h-6 w-6 text-primary mb-0.5" />
-                  <p className="text-sm font-semibold text-center leading-tight">{group.cartao.instituicao}</p>
+                  <BrandLogo
+                    store={group.cartao.instituicao}
+                    size={40}
+                    fallbackIcon={<CreditCard className="h-5 w-5 text-primary" />}
+                    fallbackBg="hsl(var(--primary) / 0.1)"
+                  />
+                  <p className="text-sm font-semibold text-center leading-tight mt-1">{group.cartao.instituicao}</p>
                   <p className="text-[10px] text-muted-foreground">•••• {group.cartao.final_cartao}</p>
                 </div>
                 <div className="flex-1 text-right">
