@@ -157,6 +157,8 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
 
     setLoading(true);
 
+    if (import.meta.env.DEV) console.log("Salvando logo:", merchantLogoUrl);
+
     try {
       const valorNum = parseFloat(valor);
       if (isNaN(valorNum) || valorNum <= 0) throw new Error("Valor inválido");
