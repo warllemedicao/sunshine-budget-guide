@@ -137,6 +137,13 @@ export type Database = {
             referencedRelation: "cartoes"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "lancamentos_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
         ]
       }
       merchants: {
@@ -148,6 +155,7 @@ export type Database = {
           logo_url: string | null
           logo_storage_path: string | null
           created_at: string
+          updated_at: string
         }
         Insert: {
           id?: string
@@ -157,6 +165,7 @@ export type Database = {
           logo_url?: string | null
           logo_storage_path?: string | null
           created_at?: string
+          updated_at?: string
         }
         Update: {
           id?: string
@@ -166,6 +175,7 @@ export type Database = {
           logo_url?: string | null
           logo_storage_path?: string | null
           created_at?: string
+          updated_at?: string
         }
         Relationships: []
       }
