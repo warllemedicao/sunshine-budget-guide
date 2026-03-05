@@ -45,6 +45,12 @@ const BrandLogo = ({ store, fallbackIcon, fallbackBg, size = 28, initialUrl, onL
   // Set to true when logoSrc comes from an external API (not local cache or Supabase).
   // Only external-sourced URLs should trigger the background upload to Supabase.
   const isExternalUrlRef = useRef(false);
+  // Keep onLogoResolved in a ref so the main useEffect does not need it as a
+  // dependency.  This prevents the effect from re-running when the parent
+  // re-renders and passes a new (but functionally identical) callback reference.
+  const onLogoResolvedRef = useRef(onLogoResolved);
+  // Update the ref on every render so the effect always sees the latest value.
+  onLogoResolvedRef.current = onLogoResolved;
 
   const getClientId = () => {
     const rawClientId = import.meta.env.VITE_BRANDFETCH_CLIENT_ID;
@@ -69,11 +75,14 @@ const BrandLogo = ({ store, fallbackIcon, fallbackBg, size = 28, initialUrl, onL
     setLoading(true);
 
     // ── Fast path: use a pre-resolved URL supplied by the parent ─────────────
-    if (initialUrl) {
+    // Blob URLs are session-specific and become invalid after a page refresh.
+    // If the stored initialUrl is a stale blob (written by a previous bug),
+    // skip the fast path so the logo is re-fetched through the normal pipeline.
+    if (initialUrl && !initialUrl.startsWith("blob:")) {
       isExternalUrlRef.current = false;
       setLogoSrc(initialUrl);
       setLoading(false);
-      onLogoResolved?.(initialUrl);
+      onLogoResolvedRef.current?.(initialUrl);
       return;
     }
 
@@ -88,7 +97,9 @@ const BrandLogo = ({ store, fallbackIcon, fallbackBg, size = 28, initialUrl, onL
         isExternalUrlRef.current = false;
         setLogoSrc(cached);
         setLoading(false);
-        onLogoResolved?.(cached);
+        // Do NOT call onLogoResolved with a session-specific blob URL.
+        // Blob URLs are ephemeral — persisting them to the database would
+        // cause logos to fail to load on any subsequent page refresh.
         return;
       }
 
@@ -104,7 +115,7 @@ const BrandLogo = ({ store, fallbackIcon, fallbackBg, size = 28, initialUrl, onL
         isExternalUrlRef.current = false;
         setLogoSrc(supabaseUrl);
         setLoading(false);
-        onLogoResolved?.(supabaseUrl);
+        onLogoResolvedRef.current?.(supabaseUrl);
         return;
       }
 
@@ -116,18 +127,27 @@ const BrandLogo = ({ store, fallbackIcon, fallbackBg, size = 28, initialUrl, onL
       const clientId = getClientId();
       let externalUrl: string;
       if (domain) {
+        // A real domain was resolved — the CDN/Clearbit URL is a reliable,
+        // persistent logo that is worth uploading to Supabase and saving to DB.
         externalUrl = clientId
           ? `https://cdn.brandfetch.io/${domain}/w/56/h/56?c=${clientId}`
           : `https://logo.clearbit.com/${domain}`;
+        isExternalUrlRef.current = true;
       } else {
-        // Brandfetch found no domain; fall back to Google Favicon directly.
+        // No domain found — use Google Favicon as a best-effort display
+        // fallback but do NOT upload or persist the result.  The favicon
+        // endpoint uses a store name (not a domain) so results are unreliable
+        // and may be a generic globe icon.
         externalUrl = `https://www.google.com/s2/favicons?domain=${encodeURIComponent(store)}&sz=128`;
+        isExternalUrlRef.current = false;
       }
 
-      isExternalUrlRef.current = true;
       setLogoSrc(externalUrl);
       setLoading(false);
-      onLogoResolved?.(externalUrl);
+      // Only notify the parent (and persist) when we have a domain-resolved URL.
+      if (domain) {
+        onLogoResolvedRef.current?.(externalUrl);
+      }
     })();
 
     return () => {
@@ -137,7 +157,7 @@ const BrandLogo = ({ store, fallbackIcon, fallbackBg, size = 28, initialUrl, onL
         blobUrlRef.current = null;
       }
     };
-  }, [store, initialUrl, onLogoResolved]);
+  }, [store, initialUrl]); // onLogoResolved intentionally omitted — tracked via onLogoResolvedRef
 
   const handleImageLoad = () => {
     // Only upload to Supabase when the logo was resolved via an external API.
