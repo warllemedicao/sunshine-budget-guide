@@ -1,4 +1,8 @@
-/** In-memory cache so we never call the Search API twice for the same store name. */
+/**
+ * In-memory cache so we never call the Search API twice for the same store name.
+ * The empty string "" is used as a sentinel meaning "no domain found" so that
+ * failed lookups are also cached and don't trigger repeated network requests.
+ */
 const domainCache = new Map<string, string>();
 
 /** Clear the cache. Exposed for unit-testing purposes. */
@@ -21,7 +25,8 @@ export async function searchBrandfetchDomain(storeName: string): Promise<string 
 
   const cacheKey = storeName.toLowerCase().trim();
   const cached = domainCache.get(cacheKey);
-  if (cached !== undefined) return cached;
+  // Convert the "" sentinel back to null so callers receive a consistent type.
+  if (cached !== undefined) return cached || null;
 
   try {
     const response = await fetch(
@@ -38,9 +43,10 @@ export async function searchBrandfetchDomain(storeName: string): Promise<string 
 
     const results: Array<{ domain?: string }> = await response.json();
     const domain = results?.[0]?.domain ?? null;
-    if (domain) {
-      domainCache.set(cacheKey, domain);
-    } else {
+    // Always cache the result — including "not found" — to prevent duplicate
+    // API calls for stores with no matching domain.
+    domainCache.set(cacheKey, domain ?? "");
+    if (!domain) {
       console.warn(`[Brandfetch] No domain found for "${storeName}" in API response.`);
     }
     return domain;

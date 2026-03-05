@@ -57,6 +57,22 @@ describe("searchBrandfetchDomain", () => {
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
+  it("caches null results so the API is only called once per store name when no domain is found", async () => {
+    vi.stubEnv("VITE_BRANDFETCH_API_KEY", "test-key");
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => [],
+    });
+    vi.stubGlobal("fetch", mockFetch);
+
+    const first = await searchBrandfetchDomain("UnknownBrand");
+    const second = await searchBrandfetchDomain("UnknownBrand");
+
+    expect(first).toBeNull();
+    expect(second).toBeNull();
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
   it("returns null when the API returns an empty array", async () => {
     vi.stubEnv("VITE_BRANDFETCH_API_KEY", "test-key");
     vi.stubGlobal(
