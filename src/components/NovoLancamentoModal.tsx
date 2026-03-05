@@ -17,6 +17,7 @@ import { ReceiptUploadButton } from '@/components/ReceiptUploadButton';
 import { ReceiptViewer } from '@/components/ReceiptViewer';
 import { useReceipts } from '@/hooks/useReceipts';
 import BrandLogo from '@/components/BrandLogo';
+import { findOrCreateMerchant } from '@/lib/merchantLogo';
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -45,6 +46,7 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
   const [loja, setLoja] = useState("");
   const [debouncedLoja, setDebouncedLoja] = useState("");
   const [merchantLogoUrl, setMerchantLogoUrl] = useState<string | null>(null);
+  const [merchantId, setMerchantId] = useState<string | null>(null);
   const [cartoes, setCartoes] = useState<Tables<"cartoes">[]>([]);
   const [loading, setLoading] = useState(false);
   // Estados para comprovante
@@ -101,6 +103,7 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
       setTotalParcelas(String(editItem.total_parcelas || 1));
       setLoja(editItem.loja || "");
       setMerchantLogoUrl(editItem.merchant_logo_url || null);
+      setMerchantId(editItem.merchant_id || null);
       setReceiptPath(editItem.comprovante_url || "");
       setReceiptFileName(editItem.comprovante_url ? "Comprovante" : "");
     } else {
@@ -120,6 +123,7 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
     setTotalParcelas("1");
     setLoja("");
     setMerchantLogoUrl(null);
+    setMerchantId(null);
     setReceiptPath("");
     setReceiptFileName("");
   };
@@ -161,6 +165,24 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
       const valorNum = parseFloat(valor);
       if (isNaN(valorNum) || valorNum <= 0) throw new Error("Valor inválido");
 
+      // Resolve merchant (find or create) when a store name is provided.
+      // This ensures each store exists only once in the merchants table.
+      let resolvedMerchantId = merchantId;
+      let resolvedLogoUrl = merchantLogoUrl;
+      if (loja) {
+        try {
+          const merchant = await findOrCreateMerchant(loja);
+          resolvedMerchantId = merchant.id;
+          // Prefer the persisted logo_url from the merchants table
+          if (merchant.logo_url) resolvedLogoUrl = merchant.logo_url;
+          // Keep component state in sync
+          setMerchantId(merchant.id);
+          if (merchant.logo_url) setMerchantLogoUrl(merchant.logo_url);
+        } catch (err) {
+          console.warn("[NovoLancamento] findOrCreateMerchant failed:", err);
+        }
+      }
+
       if (editItem) {
         // For card purchases, recalculate the effective invoice date from the user-chosen date.
         let effectiveDataEdit = data;
@@ -191,6 +213,7 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
                 valor: valorNum,
                 categoria,
                 loja,
+                merchant_id: resolvedMerchantId || null,
                 comprovante_url: receiptPath || null,
               }).eq("id", inst.id).then(({ error }) => { if (error) throw error; });
             })
@@ -217,7 +240,8 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
             metodo, cartao_id: metodo === "cartao" ? cartaoId || null : null,
             total_parcelas: metodo === "cartao" ? parseInt(totalParcelas) : null,
             loja, comprovante_url: receiptPath || null,
-            merchant_logo_url: merchantLogoUrl || null,
+            merchant_id: resolvedMerchantId || null,
+            merchant_logo_url: resolvedLogoUrl || null,
           };
           const { error } = await supabase.from("lancamentos").update(updatePayload).eq("id", editItem.id);
           if (isDataCompraSchemaError(error)) {
@@ -245,8 +269,9 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
             categoria, fixo: true,
             metodo, cartao_id: null,
             parcela_grupo_id: grupoId, loja,
+            merchant_id: resolvedMerchantId || null,
             comprovante_url: receiptPath || null,
-            merchant_logo_url: merchantLogoUrl || null,
+            merchant_logo_url: resolvedLogoUrl || null,
           });
         }
         await insertLancamentos(inserts);
@@ -276,8 +301,9 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
             metodo: "cartao", cartao_id: cartaoId || null,
             parcela_atual: i + 1, total_parcelas: parcelas,
             parcela_grupo_id: grupoId, loja,
+            merchant_id: resolvedMerchantId || null,
             comprovante_url: receiptPath || null,
-            merchant_logo_url: merchantLogoUrl || null,
+            merchant_logo_url: resolvedLogoUrl || null,
           };
         });
 
@@ -295,8 +321,9 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
           // Preserve the user-chosen purchase date for display
           data_compra: data,
           categoria, fixo, metodo, cartao_id: metodo === "cartao" ? cartaoId || null : null, loja,
+          merchant_id: resolvedMerchantId || null,
           comprovante_url: receiptPath || null,
-          merchant_logo_url: merchantLogoUrl || null,
+          merchant_logo_url: resolvedLogoUrl || null,
         });
       }
 

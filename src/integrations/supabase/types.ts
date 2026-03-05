@@ -118,6 +118,7 @@ export type Database = {
           fixo: boolean
           id: string
           loja: string | null
+          merchant_id: string | null
           merchant_logo_url: string | null
           metodo: string
           parcela_atual: number | null
@@ -139,6 +140,7 @@ export type Database = {
           fixo?: boolean
           id?: string
           loja?: string | null
+          merchant_id?: string | null
           merchant_logo_url?: string | null
           metodo?: string
           parcela_atual?: number | null
@@ -160,6 +162,7 @@ export type Database = {
           fixo?: boolean
           id?: string
           loja?: string | null
+          merchant_id?: string | null
           merchant_logo_url?: string | null
           metodo?: string
           parcela_atual?: number | null
@@ -178,7 +181,47 @@ export type Database = {
             referencedRelation: "cartoes"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "lancamentos_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
         ]
+      }
+      merchants: {
+        Row: {
+          created_at: string
+          domain: string | null
+          id: string
+          logo_storage_path: string | null
+          logo_url: string | null
+          name: string
+          normalized_name: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          domain?: string | null
+          id?: string
+          logo_storage_path?: string | null
+          logo_url?: string | null
+          name: string
+          normalized_name: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          domain?: string | null
+          id?: string
+          logo_storage_path?: string | null
+          logo_url?: string | null
+          name?: string
+          normalized_name?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       objetivos_globais: {
         Row: {

@@ -1,16 +1,29 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
+  normalizeMerchantName,
   sanitizeStoreName,
   getLogoFromLocalCache,
   saveLogoToLocalCache,
   getLogoFromSupabase,
   uploadLogoToSupabase,
   saveMerchantLogoUrl,
+  findOrCreateMerchant,
+  getMerchantByNormalizedName,
 } from "@/lib/merchantLogo";
 
 // ---------------------------------------------------------------------------
 // Mocks
 // ---------------------------------------------------------------------------
+
+const mockMaybeSingle = vi.fn();
+const mockSelect = vi.fn(() => ({ eq: vi.fn(() => ({ maybeSingle: mockMaybeSingle })) }));
+const mockInsertSelect = vi.fn();
+const mockInsert = vi.fn(() => ({ select: mockInsertSelect }));
+const mockEq = vi.fn(() => ({ error: null }));
+const mockUpdate = vi.fn(() => ({ eq: mockEq }));
+const mockIsNull = vi.fn(() => ({ error: null }));
+const mockEqForNullCheck = vi.fn(() => ({ is: mockIsNull }));
+const mockUpdateLegacy = vi.fn(() => ({ eq: mockEqForNullCheck }));
 
 vi.mock("@/integrations/supabase/client", () => ({
   supabase: {
@@ -22,13 +35,75 @@ vi.mock("@/integrations/supabase/client", () => ({
         upload: vi.fn(() => ({ error: null })),
       })),
     },
-    from: vi.fn(() => ({
-      update: vi.fn(() => ({
-        eq: vi.fn(() => ({ error: null })),
-      })),
-    })),
+    from: vi.fn((table: string) => {
+      if (table === "merchants") {
+        return {
+          select: mockSelect,
+          insert: mockInsert,
+          update: mockUpdate,
+        };
+      }
+      // lancamentos table
+      return {
+        update: mockUpdateLegacy,
+      };
+    }),
   },
 }));
+
+// ---------------------------------------------------------------------------
+// normalizeMerchantName
+// ---------------------------------------------------------------------------
+
+describe("normalizeMerchantName", () => {
+  it("lowercases the name", () => {
+    expect(normalizeMerchantName("AMAZON")).toBe("amazon");
+  });
+
+  it("removes spaces", () => {
+    expect(normalizeMerchantName("You Tube")).toBe("youtube");
+  });
+
+  it("removes accents", () => {
+    expect(normalizeMerchantName("Café Brasil")).toBe("cafebrasil");
+  });
+
+  it("removes apostrophes", () => {
+    expect(normalizeMerchantName("McDonald's")).toBe("mcdonalds");
+  });
+
+  it("normalises 'Mc Donald's' to 'mcdonalds'", () => {
+    expect(normalizeMerchantName("Mc Donald's")).toBe("mcdonalds");
+  });
+
+  it("normalises 'MC DONALDS' to 'mcdonalds'", () => {
+    expect(normalizeMerchantName("MC DONALDS")).toBe("mcdonalds");
+  });
+
+  it("removes .com suffix", () => {
+    expect(normalizeMerchantName("Amazon.com")).toBe("amazon");
+  });
+
+  it("removes ltda suffix", () => {
+    expect(normalizeMerchantName("Lojas Ltda")).toBe("lojas");
+  });
+
+  it("removes s/a suffix", () => {
+    expect(normalizeMerchantName("Empresa S/A")).toBe("empresa");
+  });
+
+  it("removes inc suffix", () => {
+    expect(normalizeMerchantName("Google Inc")).toBe("google");
+  });
+
+  it("removes corp suffix", () => {
+    expect(normalizeMerchantName("Microsoft Corp")).toBe("microsoft");
+  });
+
+  it("handles leading/trailing whitespace", () => {
+    expect(normalizeMerchantName("  Netflix  ")).toBe("netflix");
+  });
+});
 
 // ---------------------------------------------------------------------------
 // sanitizeStoreName
@@ -53,6 +128,73 @@ describe("sanitizeStoreName", () => {
 
   it("appends .png extension", () => {
     expect(sanitizeStoreName("Netflix")).toBe("netflix.png");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getMerchantByNormalizedName
+// ---------------------------------------------------------------------------
+
+describe("getMerchantByNormalizedName", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("returns the merchant when found", async () => {
+    const fakeMerchant = { id: "uuid-1", name: "Amazon", normalized_name: "amazon", domain: "amazon.com", logo_url: "https://logo.url", logo_storage_path: null };
+    mockMaybeSingle.mockResolvedValue({ data: fakeMerchant });
+    const result = await getMerchantByNormalizedName("amazon");
+    expect(result).toEqual(fakeMerchant);
+  });
+
+  it("returns null when not found", async () => {
+    mockMaybeSingle.mockResolvedValue({ data: null });
+    const result = await getMerchantByNormalizedName("unknownbrand");
+    expect(result).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// findOrCreateMerchant
+// ---------------------------------------------------------------------------
+
+describe("findOrCreateMerchant", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("returns existing merchant without inserting", async () => {
+    const existing = { id: "uuid-1", name: "Amazon", normalized_name: "amazon", domain: null, logo_url: null, logo_storage_path: null };
+    mockMaybeSingle.mockResolvedValue({ data: existing });
+    const result = await findOrCreateMerchant("Amazon");
+    expect(result).toEqual(existing);
+    expect(mockInsert).not.toHaveBeenCalled();
+  });
+
+  it("creates a new merchant when one does not exist", async () => {
+    const created = { id: "uuid-2", name: "Netflix", normalized_name: "netflix", domain: null, logo_url: null, logo_storage_path: null };
+    // First call (select) returns null
+    mockMaybeSingle.mockResolvedValue({ data: null });
+    // Insert returns the new record
+    mockInsertSelect.mockReturnValue({
+      single: vi.fn().mockResolvedValue({ data: created, error: null }),
+    });
+    const result = await findOrCreateMerchant("Netflix");
+    expect(result).toEqual(created);
+    expect(mockInsert).toHaveBeenCalledWith({ name: "Netflix", normalized_name: "netflix" });
+  });
+
+  it("retries select on insert conflict and returns existing merchant", async () => {
+    const existing = { id: "uuid-3", name: "Spotify", normalized_name: "spotify", domain: null, logo_url: null, logo_storage_path: null };
+    // First select returns null, insert fails, second select returns existing
+    mockMaybeSingle
+      .mockResolvedValueOnce({ data: null })
+      .mockResolvedValueOnce({ data: existing });
+    mockInsertSelect.mockReturnValue({
+      single: vi.fn().mockResolvedValue({ data: null, error: { message: "unique violation" } }),
+    });
+    const result = await findOrCreateMerchant("Spotify");
+    expect(result).toEqual(existing);
   });
 });
 
@@ -147,6 +289,7 @@ describe("getLogoFromSupabase", () => {
 describe("uploadLogoToSupabase", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.clearAllMocks();
   });
 
   it("returns null when fetching the image fails", async () => {
@@ -170,6 +313,8 @@ describe("uploadLogoToSupabase", () => {
       "fetch",
       vi.fn().mockResolvedValue({ ok: true, blob: () => Promise.resolve(fakeBlob) }),
     );
+    // mockUpdate handles the merchants table update inside uploadLogoToSupabase
+    mockEq.mockResolvedValue({ error: null });
     const result = await uploadLogoToSupabase("youtube", "https://cdn.example.com/youtube.png");
     expect(result).toBe(
       "https://example.supabase.co/storage/v1/object/public/merchant-logos/youtube.png",
@@ -182,16 +327,24 @@ describe("uploadLogoToSupabase", () => {
 // ---------------------------------------------------------------------------
 
 describe("saveMerchantLogoUrl", () => {
-  it("calls supabase update with the correct parameters", async () => {
-    const { supabase } = await import("@/integrations/supabase/client");
-    const eqMock = vi.fn().mockResolvedValue({ error: null });
-    const updateMock = vi.fn(() => ({ eq: eqMock }));
-    vi.mocked(supabase.from).mockReturnValue({ update: updateMock } as never);
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
 
+  it("updates lancamentos via merchant_id when provided", async () => {
+    mockEq.mockResolvedValue({ error: null });
+    mockIsNull.mockResolvedValue({ error: null });
+    await saveMerchantLogoUrl("YouTube", "https://example.com/youtube.png", "merchant-uuid");
+    // merchants.update should be called (for logo_url)
+    expect(mockUpdate).toHaveBeenCalledWith({ logo_url: "https://example.com/youtube.png" });
+  });
+
+  it("falls back to updating lancamentos by loja name for legacy rows", async () => {
+    mockEq.mockResolvedValue({ error: null });
+    mockIsNull.mockResolvedValue({ error: null });
     await saveMerchantLogoUrl("YouTube", "https://example.com/youtube.png");
-
-    expect(supabase.from).toHaveBeenCalledWith("lancamentos");
-    expect(updateMock).toHaveBeenCalledWith({ merchant_logo_url: "https://example.com/youtube.png" });
-    expect(eqMock).toHaveBeenCalledWith("loja", "YouTube");
+    // Legacy update: lancamentos.update({ merchant_logo_url }).eq("loja", "YouTube").is("merchant_id", null)
+    expect(mockUpdateLegacy).toHaveBeenCalledWith({ merchant_logo_url: "https://example.com/youtube.png" });
   });
 });
+
