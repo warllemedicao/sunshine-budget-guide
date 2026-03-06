@@ -22,7 +22,7 @@ const Perfil = () => {
     queryKey: ["profile", user?.id],
     queryFn: async () => {
       // PGRST116: no rows returned for .single() — expected when no profile exists yet
-      const { data, error } = await supabase.from("usuarios").select("*").eq("id", user!.id).single();
+      const { data, error } = await supabase.from("profiles").select("*").eq("user_id", user!.id).single();
       if (error && error.code !== "PGRST116") throw error;
       return data;
     },
@@ -32,7 +32,7 @@ const Perfil = () => {
   const { data: cartoes = [] } = useQuery({
     queryKey: ["cartoes", user?.id],
     queryFn: async () => {
-      const { data, error } = await supabase.from("cartoes").select("*").eq("usuario_id", user!.id).order("created_at");
+      const { data, error } = await supabase.from("cartoes").select("*").eq("user_id", user!.id).order("created_at");
       if (error) throw error;
       return data;
     },
@@ -54,7 +54,7 @@ const Perfil = () => {
 
   const updateProfile = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase.from("usuarios").update({ nome, email }).eq("id", user!.id);
+      const { error } = await supabase.from("profiles").update({ nome, email }).eq("user_id", user!.id);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -125,9 +125,9 @@ const Perfil = () => {
           {cartoes.map((c) => (
             <div key={c.id} className="flex items-center justify-between rounded-lg bg-secondary p-3">
               <div>
-                <p className="text-sm font-medium">{c.nome}</p>
+                <p className="text-sm font-medium">{c.instituicao}</p>
                 <p className="text-xs text-muted-foreground">
-                  Limite: {formatCurrency(c.limite)} · Fech: {c.fechamento} · Venc: {c.vencimento}
+                  Limite: {formatCurrency(c.limite)} · Fech: {c.dia_fechamento} · Venc: {c.dia_vencimento}
                 </p>
               </div>
               <div className="flex gap-1">
@@ -169,8 +169,8 @@ interface CartaoModalProps {
 const CartaoModal = ({ open, onOpenChange, editItem, userId }: CartaoModalProps) => {
   const { toast } = useToast();
   const qc = useQueryClient();
-  const [nome, setNome] = useState("");
-  const [debouncedNome, setDebouncedNome] = useState("");
+  const [instituicao, setInstituicao] = useState("");
+  const [debouncedInstituicao, setDebouncedInstituicao] = useState("");
   const [limite, setLimite] = useState("");
   const [diaFech, setDiaFech] = useState("1");
   const [diaVenc, setDiaVenc] = useState("10");
@@ -178,34 +178,34 @@ const CartaoModal = ({ open, onOpenChange, editItem, userId }: CartaoModalProps)
 
   useEffect(() => {
     if (editItem) {
-      setNome(editItem.nome);
+      setInstituicao(editItem.instituicao);
       setLimite(String(editItem.limite));
-      setDiaFech(String(editItem.fechamento));
-      setDiaVenc(String(editItem.vencimento));
+      setDiaFech(String(editItem.dia_fechamento));
+      setDiaVenc(String(editItem.dia_vencimento));
     } else {
-      setNome(""); setLimite(""); setDiaFech("1"); setDiaVenc("10");
+      setInstituicao(""); setLimite(""); setDiaFech("1"); setDiaVenc("10");
     }
   }, [editItem, open]);
 
-  // Debounce nome changes so the logo API is not called on every keystroke.
+  // Debounce instituicao changes so the logo API is not called on every keystroke.
   useEffect(() => {
-    const timer = setTimeout(() => setDebouncedNome(nome), 500);
+    const timer = setTimeout(() => setDebouncedInstituicao(instituicao), 500);
     return () => clearTimeout(timer);
-  }, [nome]);
+  }, [instituicao]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     try {
       const payload = {
-        nome,
-        limite: +limite, fechamento: +diaFech, vencimento: +diaVenc,
+        instituicao,
+        limite: +limite, dia_fechamento: +diaFech, dia_vencimento: +diaVenc,
       };
       if (editItem) {
         const { error } = await supabase.from("cartoes").update(payload).eq("id", editItem.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from("cartoes").insert({ ...payload, usuario_id: userId });
+        const { error } = await supabase.from("cartoes").insert({ ...payload, user_id: userId });
         if (error) throw error;
       }
       qc.invalidateQueries({ queryKey: ["cartoes"] });
@@ -228,8 +228,8 @@ const CartaoModal = ({ open, onOpenChange, editItem, userId }: CartaoModalProps)
           <div className="space-y-1">
             <Label>Instituição</Label>
             <div className="flex items-center gap-2">
-              <Input value={nome} onChange={(e) => setNome(e.target.value)} required className="flex-1" />
-              {debouncedNome && <BrandLogo store={debouncedNome} size={32} />}
+              <Input value={instituicao} onChange={(e) => setInstituicao(e.target.value)} required className="flex-1" />
+              {debouncedInstituicao && <BrandLogo store={debouncedInstituicao} size={32} />}
             </div>
           </div>
           <div className="space-y-1"><Label>Limite (R$)</Label><Input type="number" value={limite} onChange={(e) => setLimite(e.target.value)} /></div>
