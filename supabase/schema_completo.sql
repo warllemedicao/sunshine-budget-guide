@@ -13,6 +13,8 @@
 --   3. merchants
 --   4. lancamentos
 --   5. faturas
+--   6. objetivos_globais
+--   7. objetivos_lista
 -- ============================================================
 
 
@@ -304,3 +306,93 @@ CREATE POLICY "Usuários autenticados podem atualizar logos"
 CREATE POLICY "Qualquer um pode visualizar logos de merchants"
   ON storage.objects FOR SELECT
   USING (bucket_id = 'merchant-logos');
+
+
+-- ============================================================
+-- TABELA 6: objetivos_globais
+-- ============================================================
+-- Metas financeiras globais (investimentos e reserva de emergência).
+-- Máximo de dois registros por usuário: 'investimento' e 'reserva'.
+-- Nota: usa `user_id` (não `usuario_id`) por convenção desta tabela.
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS public.objetivos_globais (
+  id           UUID          NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id      UUID          NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  tipo         TEXT          NOT NULL DEFAULT 'investimento',  -- 'investimento' ou 'reserva'
+  valor_atual  NUMERIC(12,2) NOT NULL DEFAULT 0,
+  valor_meta   NUMERIC(12,2) NOT NULL DEFAULT 0,
+  data_limite  DATE,
+  created_at   TIMESTAMPTZ   NOT NULL DEFAULT now(),
+  updated_at   TIMESTAMPTZ   NOT NULL DEFAULT now()
+);
+
+-- Habilitar RLS
+ALTER TABLE public.objetivos_globais ENABLE ROW LEVEL SECURITY;
+
+-- Políticas de segurança (RLS)
+CREATE POLICY "Usuário pode ver seus objetivos globais"
+  ON public.objetivos_globais FOR SELECT
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Usuário pode inserir seus objetivos globais"
+  ON public.objetivos_globais FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Usuário pode atualizar seus objetivos globais"
+  ON public.objetivos_globais FOR UPDATE
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Usuário pode excluir seus objetivos globais"
+  ON public.objetivos_globais FOR DELETE
+  USING (auth.uid() = user_id);
+
+-- Trigger updated_at
+CREATE TRIGGER update_objetivos_globais_updated_at
+  BEFORE UPDATE ON public.objetivos_globais
+  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+
+
+-- ============================================================
+-- TABELA 7: objetivos_lista
+-- ============================================================
+-- Lista de objetivos específicos do usuário (obras da casa, lazer, etc.).
+-- Nota: usa `user_id` (não `usuario_id`) por convenção desta tabela.
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS public.objetivos_lista (
+  id             UUID          NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id        UUID          NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  tipo           TEXT          NOT NULL DEFAULT 'obra',  -- 'obra' ou 'lazer'
+  nome           TEXT          NOT NULL DEFAULT '',
+  data_prevista  DATE,
+  valor_previsto NUMERIC(12,2) NOT NULL DEFAULT 0,
+  concluido      BOOLEAN       NOT NULL DEFAULT false,
+  created_at     TIMESTAMPTZ   NOT NULL DEFAULT now(),
+  updated_at     TIMESTAMPTZ   NOT NULL DEFAULT now()
+);
+
+-- Habilitar RLS
+ALTER TABLE public.objetivos_lista ENABLE ROW LEVEL SECURITY;
+
+-- Políticas de segurança (RLS)
+CREATE POLICY "Usuário pode ver seus itens de lista"
+  ON public.objetivos_lista FOR SELECT
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Usuário pode inserir seus itens de lista"
+  ON public.objetivos_lista FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Usuário pode atualizar seus itens de lista"
+  ON public.objetivos_lista FOR UPDATE
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Usuário pode excluir seus itens de lista"
+  ON public.objetivos_lista FOR DELETE
+  USING (auth.uid() = user_id);
+
+-- Trigger updated_at
+CREATE TRIGGER update_objetivos_lista_updated_at
+  BEFORE UPDATE ON public.objetivos_lista
+  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();

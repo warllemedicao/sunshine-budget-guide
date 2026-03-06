@@ -19,8 +19,7 @@ const Objetivos = () => {
     queryKey: ["objetivos_globais", user?.id],
     queryFn: async () => {
       try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { data, error } = await (supabase as any).from("objetivos_globais").select("*").eq("user_id", user!.id);
+        const { data, error } = await supabase.from("objetivos_globais").select("*").eq("user_id", user!.id);
         if (error) return [];
         return data ?? [];
       } catch {
@@ -34,8 +33,7 @@ const Objetivos = () => {
     queryKey: ["objetivos_lista", user?.id],
     queryFn: async () => {
       try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { data, error } = await (supabase as any).from("objetivos_lista").select("*").eq("user_id", user!.id).order("created_at");
+        const { data, error } = await supabase.from("objetivos_lista").select("*").eq("user_id", user!.id).order("created_at");
         if (error) return [];
         return data ?? [];
       } catch {
@@ -52,15 +50,12 @@ const Objetivos = () => {
 
   const upsertGlobal = useMutation({
     mutationFn: async (params: { tipo: string; valor_atual: number; valor_meta: number; data_limite?: string }) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const existing = globais.find((g: any) => g.tipo === params.tipo);
+      const existing = globais.find((g) => g.tipo === params.tipo);
       if (existing) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { error } = await (supabase as any).from("objetivos_globais").update(params).eq("id", existing.id);
+        const { error } = await supabase.from("objetivos_globais").update(params).eq("id", existing.id);
         if (error) throw error;
       } else {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { error } = await (supabase as any).from("objetivos_globais").insert({ ...params, user_id: user!.id });
+        const { error } = await supabase.from("objetivos_globais").insert({ ...params, user_id: user!.id });
         if (error) throw error;
       }
     },
@@ -72,8 +67,7 @@ const Objetivos = () => {
 
   const addListItem = useMutation({
     mutationFn: async (params: { tipo: string; nome: string; data_prevista?: string; valor_previsto: number }) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { error } = await (supabase as any).from("objetivos_lista").insert({ ...params, user_id: user!.id });
+      const { error } = await supabase.from("objetivos_lista").insert({ ...params, user_id: user!.id });
       if (error) throw error;
     },
     onSuccess: () => {
@@ -83,8 +77,7 @@ const Objetivos = () => {
 
   const deleteListItem = useMutation({
     mutationFn: async (id: string) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { error } = await (supabase as any).from("objetivos_lista").delete().eq("id", id);
+      const { error } = await supabase.from("objetivos_lista").delete().eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["objetivos_lista"] }),
