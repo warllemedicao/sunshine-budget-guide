@@ -200,6 +200,75 @@ export type Database = {
         }
         Relationships: []
       }
+      objetivos_globais: {
+        Row: {
+          id: string
+          user_id: string
+          tipo: string
+          valor_atual: number
+          valor_meta: number
+          data_limite: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          tipo?: string
+          valor_atual?: number
+          valor_meta?: number
+          data_limite?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          tipo?: string
+          valor_atual?: number
+          valor_meta?: number
+          data_limite?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      objetivos_lista: {
+        Row: {
+          id: string
+          user_id: string
+          tipo: string
+          nome: string
+          data_prevista: string | null
+          valor_previsto: number
+          concluido: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          tipo?: string
+          nome?: string
+          data_prevista?: string | null
+          valor_previsto?: number
+          concluido?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          tipo?: string
+          nome?: string
+          data_prevista?: string | null
+          valor_previsto?: number
+          concluido?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

@@ -6,13 +6,15 @@ Este documento descreve com precisão a estrutura de banco de dados que o aplica
 
 ## Tabelas utilizadas pelo aplicativo
 
-O projeto utiliza **5 tabelas**:
+O projeto utiliza **7 tabelas**:
 
 1. `usuarios`
 2. `cartoes`
 3. `merchants`
 4. `lancamentos`
 5. `faturas`
+6. `objetivos_globais`
+7. `objetivos_lista`
 
 ---
 
@@ -224,16 +226,104 @@ CREATE TABLE public.faturas (
 
 ---
 
+## 6. Tabela `objetivos_globais`
+
+Metas financeiras globais do usuário (investimentos e reserva de emergência). Máximo de dois registros por usuário: um do tipo `'investimento'` e um do tipo `'reserva'`.
+
+| Coluna          | Tipo           | Restrições                        | Descrição                                         |
+|-----------------|----------------|-----------------------------------|---------------------------------------------------|
+| `id`            | `uuid`         | PRIMARY KEY, NOT NULL             | Identificador do objetivo                         |
+| `user_id`       | `uuid`         | NOT NULL, FK → `auth.users(id)`   | Dono do objetivo                                  |
+| `tipo`          | `text`         | NOT NULL, DEFAULT `'investimento'`| `'investimento'` ou `'reserva'`                   |
+| `valor_atual`   | `numeric(12,2)`| NOT NULL, DEFAULT `0`             | Valor atual acumulado                             |
+| `valor_meta`    | `numeric(12,2)`| NOT NULL, DEFAULT `0`             | Valor da meta a ser atingida                      |
+| `data_limite`   | `date`         | —                                 | Data-alvo para atingir a meta (nullable)          |
+| `created_at`    | `timestamptz`  | NOT NULL, DEFAULT `now()`         | Data de criação                                   |
+| `updated_at`    | `timestamptz`  | NOT NULL, DEFAULT `now()`         | Data da última atualização                        |
+
+> **Atenção:** Esta tabela usa `user_id` (não `usuario_id`) para identificar o dono do registro.
+
+### Operações utilizadas no código
+
+| Operação  | Campos                                                           | Filtros                   |
+|-----------|------------------------------------------------------------------|---------------------------|
+| `SELECT`  | `*`                                                              | `user_id = auth.uid()`    |
+| `INSERT`  | `user_id`, `tipo`, `valor_atual`, `valor_meta`, `data_limite`    | —                         |
+| `UPDATE`  | `tipo`, `valor_atual`, `valor_meta`, `data_limite`               | `id = :id`                |
+
+### SQL de criação
+
+```sql
+CREATE TABLE public.objetivos_globais (
+  id           UUID            NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id      UUID            NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  tipo         TEXT            NOT NULL DEFAULT 'investimento',
+  valor_atual  NUMERIC(12,2)   NOT NULL DEFAULT 0,
+  valor_meta   NUMERIC(12,2)   NOT NULL DEFAULT 0,
+  data_limite  DATE,
+  created_at   TIMESTAMPTZ     NOT NULL DEFAULT now(),
+  updated_at   TIMESTAMPTZ     NOT NULL DEFAULT now()
+);
+```
+
+---
+
+## 7. Tabela `objetivos_lista`
+
+Lista de objetivos específicos do usuário (obras da casa, lazer, etc.).
+
+| Coluna           | Tipo           | Restrições                        | Descrição                                        |
+|------------------|----------------|-----------------------------------|--------------------------------------------------|
+| `id`             | `uuid`         | PRIMARY KEY, NOT NULL             | Identificador do item                            |
+| `user_id`        | `uuid`         | NOT NULL, FK → `auth.users(id)`   | Dono do item                                     |
+| `tipo`           | `text`         | NOT NULL, DEFAULT `'obra'`        | `'obra'` ou `'lazer'`                            |
+| `nome`           | `text`         | NOT NULL, DEFAULT `''`            | Nome/descrição do objetivo                       |
+| `data_prevista`  | `date`         | —                                 | Data prevista para conclusão (nullable)          |
+| `valor_previsto` | `numeric(12,2)`| NOT NULL, DEFAULT `0`             | Valor estimado necessário                        |
+| `concluido`      | `boolean`      | NOT NULL, DEFAULT `false`         | Indica se o objetivo foi atingido                |
+| `created_at`     | `timestamptz`  | NOT NULL, DEFAULT `now()`         | Data de criação                                  |
+| `updated_at`     | `timestamptz`  | NOT NULL, DEFAULT `now()`         | Data da última atualização                       |
+
+> **Atenção:** Esta tabela usa `user_id` (não `usuario_id`) para identificar o dono do registro.
+
+### Operações utilizadas no código
+
+| Operação  | Campos                                                                    | Filtros / Ordem                          |
+|-----------|---------------------------------------------------------------------------|------------------------------------------|
+| `SELECT`  | `*`                                                                       | `user_id = auth.uid()`, `ORDER BY created_at` |
+| `INSERT`  | `user_id`, `tipo`, `nome`, `data_prevista`, `valor_previsto`              | —                                        |
+| `DELETE`  | —                                                                         | `id = :id`                               |
+
+### SQL de criação
+
+```sql
+CREATE TABLE public.objetivos_lista (
+  id             UUID            NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id        UUID            NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  tipo           TEXT            NOT NULL DEFAULT 'obra',
+  nome           TEXT            NOT NULL DEFAULT '',
+  data_prevista  DATE,
+  valor_previsto NUMERIC(12,2)   NOT NULL DEFAULT 0,
+  concluido      BOOLEAN         NOT NULL DEFAULT false,
+  created_at     TIMESTAMPTZ     NOT NULL DEFAULT now(),
+  updated_at     TIMESTAMPTZ     NOT NULL DEFAULT now()
+);
+```
+
+---
+
 ## Relacionamentos (Foreign Keys)
 
 ```
-usuarios.id          ← auth.users.id  (mesmo valor; trigger auto-cria registro)
-cartoes.usuario_id   → auth.users(id)  ON DELETE CASCADE
-lancamentos.usuario_id → auth.users(id) ON DELETE CASCADE
-lancamentos.cartao_id  → cartoes(id)   ON DELETE SET NULL
-lancamentos.merchant_id → merchants(id) ON DELETE SET NULL
-faturas.usuario_id   → auth.users(id)  ON DELETE CASCADE
-faturas.cartao_id    → cartoes(id)     ON DELETE CASCADE
+usuarios.id              ← auth.users.id  (mesmo valor; trigger auto-cria registro)
+cartoes.usuario_id       → auth.users(id)  ON DELETE CASCADE
+lancamentos.usuario_id   → auth.users(id)  ON DELETE CASCADE
+lancamentos.cartao_id    → cartoes(id)     ON DELETE SET NULL
+lancamentos.merchant_id  → merchants(id)   ON DELETE SET NULL
+faturas.usuario_id       → auth.users(id)  ON DELETE CASCADE
+faturas.cartao_id        → cartoes(id)     ON DELETE CASCADE
+objetivos_globais.user_id → auth.users(id) ON DELETE CASCADE
+objetivos_lista.user_id   → auth.users(id) ON DELETE CASCADE
 ```
 
 ---
