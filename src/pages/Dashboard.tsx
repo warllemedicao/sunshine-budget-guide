@@ -309,7 +309,7 @@ const Dashboard = () => {
                       {/* Left: store logo + description */}
                       <div className="flex items-center gap-1.5 flex-1 min-w-0">
                         {l.loja ? (
-                          <BrandLogo store={l.loja} initialUrl={l.merchant_logo_url} fallbackIcon={<Icon className="h-3.5 w-3.5" style={{ color: cat.color }} />} fallbackBg={cat.color + "20"} />
+                          <BrandLogo store={l.loja} initialUrl={l.merchant_logo_url} merchantId={l.merchant_id} fallbackIcon={<Icon className="h-3.5 w-3.5" style={{ color: cat.color }} />} fallbackBg={cat.color + "20"} />
                         ) : (
                           <div className="flex h-7 w-7 items-center justify-center rounded-md flex-shrink-0" style={{ backgroundColor: cat.color + "20" }}>
                             <Icon className="h-3.5 w-3.5" style={{ color: cat.color }} />

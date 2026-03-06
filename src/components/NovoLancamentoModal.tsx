@@ -45,6 +45,7 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
   const [loja, setLoja] = useState("");
   const [debouncedLoja, setDebouncedLoja] = useState("");
   const [merchantLogoUrl, setMerchantLogoUrl] = useState<string | null>(null);
+  const [merchantId, setMerchantId] = useState<string | null>(null);
   const [cartoes, setCartoes] = useState<Tables<"cartoes">[]>([]);
   const [loading, setLoading] = useState(false);
   // Estados para comprovante
@@ -100,6 +101,7 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
       setTotalParcelas(String(editItem.parcelas || 1));
       setLoja(editItem.loja || "");
       setMerchantLogoUrl(editItem.merchant_logo_url || null);
+      setMerchantId(editItem.merchant_id || null);
       setReceiptPath('');
       setReceiptFileName('');
     } else {
@@ -119,6 +121,7 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
     setTotalParcelas("1");
     setLoja("");
     setMerchantLogoUrl(null);
+    setMerchantId(null);
     setReceiptPath("");
     setReceiptFileName("");
   };
@@ -155,6 +158,7 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
           cartao_id: metodo === "cartao" ? cartaoId || null : null,
           parcelas: metodo === "cartao" ? parseInt(totalParcelas) : null,
           loja,
+          merchant_id: merchantId || null,
           merchant_logo_url: merchantLogoUrl || null,
         };
         const { error } = await supabase.from("lancamentos").update(updatePayload).eq("id", editItem.id);
@@ -172,6 +176,7 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
             data_compra: data,
             categoria, fixa: true,
             cartao_id: null, loja,
+            merchant_id: merchantId || null,
             merchant_logo_url: merchantLogoUrl || null,
           });
         }
@@ -198,6 +203,7 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
             cartao_id: cartaoId || null,
             parcela_atual: i + 1, parcelas: numParcelas,
             loja,
+            merchant_id: merchantId || null,
             merchant_logo_url: merchantLogoUrl || null,
           };
         });
@@ -216,6 +222,7 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
           usuario_id: user.id, descricao, valor: valorNum, data: effectiveData,
           data_compra: data,
           categoria, fixa: fixo, cartao_id: metodo === "cartao" ? cartaoId || null : null, loja,
+          merchant_id: merchantId || null,
           merchant_logo_url: merchantLogoUrl || null,
         });
         if (error) throw error;
@@ -357,7 +364,14 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
             <Label>Loja (opcional)</Label>
             <div className="flex items-center gap-2">
               <Input value={loja} onChange={(e) => setLoja(e.target.value)} className="flex-1" />
-              {debouncedLoja && <BrandLogo store={debouncedLoja} size={32} onLogoResolved={setMerchantLogoUrl} />}
+              {debouncedLoja && (
+                <BrandLogo
+                  store={debouncedLoja}
+                  size={32}
+                  onLogoResolved={setMerchantLogoUrl}
+                  onMerchantResolved={setMerchantId}
+                />
+              )}
             </div>
           </div>
 

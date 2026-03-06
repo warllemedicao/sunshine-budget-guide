@@ -3,9 +3,11 @@ import { searchBrandfetchDomain } from "@/lib/brandfetch";
 import {
   getLogoFromLocalCache,
   getLogoFromSupabase,
+  getMerchantLogoById,
   saveLogoToLocalCache,
   uploadLogoToSupabase,
   saveMerchantLogoUrl,
+  findOrCreateMerchant,
 } from "@/lib/merchantLogo";
 
 interface BrandLogoProps {
@@ -18,25 +20,30 @@ interface BrandLogoProps {
   size?: number;
   /** Pre-resolved logo URL. When provided the component renders it immediately without any cache or API lookup. */
   initialUrl?: string | null;
+  /** Merchant ID from the merchants table. When provided, the logo is looked up directly from the DB. */
+  merchantId?: string | null;
   /** Called whenever a logo URL is resolved (including via initialUrl). Useful for the parent to persist the URL. */
   onLogoResolved?: (url: string | null) => void;
+  /** Called when a merchant record is resolved/created in the merchants table, providing the merchant ID. */
+  onMerchantResolved?: (merchantId: string) => void;
 }
 
 /**
  * BrandLogo: shows a brand logo for a store/company name.
  *
  * Resolution priority (offline-first):
- *   1. Browser Cache Storage (no network)
- *   2. Supabase Storage public URL (one HEAD request)
- *   3. External APIs: Brandfetch CDN / Clearbit → Google Favicon
- *   4. fallbackIcon (category icon) or nothing
+ *   1. Pre-resolved initialUrl from parent (skips all lookups)
+ *   2. Merchants table lookup by merchantId (fast DB row read)
+ *   3. Browser Cache Storage (no network)
+ *   4. Supabase Storage public URL (one HEAD request)
+ *   5. External APIs: Brandfetch CDN / Clearbit → Google Favicon
+ *   6. fallbackIcon (category icon) or nothing
  *
  * When a logo is resolved via an external API it is uploaded to Supabase
- * Storage, saved to local Cache Storage, and the merchant_logo_url field is
- * updated for all matching lancamentos rows — all in the background so the
- * UI is not blocked.
+ * Storage, a merchants table record is created/updated, the merchant_logo_url
+ * field is updated for all matching lancamentos rows — all in the background.
  */
-const BrandLogo = ({ store, fallbackIcon, fallbackBg, size = 28, initialUrl, onLogoResolved }: BrandLogoProps) => {
+const BrandLogo = ({ store, fallbackIcon, fallbackBg, size = 28, initialUrl, merchantId, onLogoResolved, onMerchantResolved }: BrandLogoProps) => {
   const [logoSrc, setLogoSrc] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   const [loading, setLoading] = useState(!!store);
@@ -51,6 +58,8 @@ const BrandLogo = ({ store, fallbackIcon, fallbackBg, size = 28, initialUrl, onL
   const onLogoResolvedRef = useRef(onLogoResolved);
   // Update the ref on every render so the effect always sees the latest value.
   onLogoResolvedRef.current = onLogoResolved;
+  const onMerchantResolvedRef = useRef(onMerchantResolved);
+  onMerchantResolvedRef.current = onMerchantResolved;
 
   const getClientId = () => {
     const rawClientId = import.meta.env.VITE_BRANDFETCH_CLIENT_ID;
@@ -89,7 +98,20 @@ const BrandLogo = ({ store, fallbackIcon, fallbackBg, size = 28, initialUrl, onL
     let cancelled = false;
 
     (async () => {
-      // ── Step 1: Browser Cache Storage (offline-first, no network) ──────────
+      // ── Step 1: Merchants table lookup by merchantId ───────────────────────
+      if (merchantId) {
+        const dbLogoUrl = await getMerchantLogoById(merchantId);
+        if (cancelled) return;
+        if (dbLogoUrl) {
+          isExternalUrlRef.current = false;
+          setLogoSrc(dbLogoUrl);
+          setLoading(false);
+          onLogoResolvedRef.current?.(dbLogoUrl);
+          return;
+        }
+      }
+
+      // ── Step 2: Browser Cache Storage (offline-first, no network) ──────────
       const cached = await getLogoFromLocalCache(store);
       if (cancelled) return;
       if (cached) {
@@ -103,7 +125,7 @@ const BrandLogo = ({ store, fallbackIcon, fallbackBg, size = 28, initialUrl, onL
         return;
       }
 
-      // ── Step 2: Supabase Storage public URL ────────────────────────────────
+      // ── Step 3: Supabase Storage public URL ────────────────────────────────
       const supabaseUrl = await getLogoFromSupabase(store);
       if (cancelled) return;
       if (supabaseUrl) {
@@ -119,7 +141,7 @@ const BrandLogo = ({ store, fallbackIcon, fallbackBg, size = 28, initialUrl, onL
         return;
       }
 
-      // ── Step 3: External APIs ──────────────────────────────────────────────
+      // ── Step 4: External APIs ──────────────────────────────────────────────
       // Use Brandfetch Search to resolve the real domain first.
       const domain = await searchBrandfetchDomain(store);
       if (cancelled) return;
@@ -157,14 +179,22 @@ const BrandLogo = ({ store, fallbackIcon, fallbackBg, size = 28, initialUrl, onL
         blobUrlRef.current = null;
       }
     };
-  }, [store, initialUrl]); // onLogoResolved intentionally omitted — tracked via onLogoResolvedRef
+  }, [store, initialUrl, merchantId]); // onLogoResolved/onMerchantResolved intentionally omitted — tracked via refs
 
   const handleImageLoad = () => {
     // Only upload to Supabase when the logo was resolved via an external API.
     // Logos already served from Supabase or the local cache skip this step.
     if (!logoSrc || !isExternalUrlRef.current) return;
     uploadLogoToSupabase(store, logoSrc).then((publicUrl) => {
-      if (publicUrl) saveMerchantLogoUrl(store, publicUrl);
+      if (publicUrl) {
+        saveMerchantLogoUrl(store, publicUrl);
+        // Create or update the merchant record and propagate the merchant ID.
+        findOrCreateMerchant(store, null, publicUrl).then((merchant) => {
+          if (merchant?.id) {
+            onMerchantResolvedRef.current?.(merchant.id);
+          }
+        });
+      }
     });
   };
 
