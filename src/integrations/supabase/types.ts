@@ -48,6 +48,7 @@ export type Database = {
           ano: number
           valor_total: number
           status: 'pago' | 'pendente'
+          comprovante_url: string | null
           created_at: string
         }
         Insert: {
@@ -58,6 +59,7 @@ export type Database = {
           ano: number
           valor_total?: number
           status?: 'pago' | 'pendente'
+          comprovante_url?: string | null
           created_at?: string
         }
         Update: {
@@ -68,6 +70,7 @@ export type Database = {
           ano?: number
           valor_total?: number
           status?: 'pago' | 'pendente'
+          comprovante_url?: string | null
           created_at?: string
         }
         Relationships: [
@@ -96,6 +99,7 @@ export type Database = {
           loja: string | null
           merchant_id: string | null
           merchant_logo_url: string | null
+          comprovante_url: string | null
           created_at: string
         }
         Insert: {
@@ -113,6 +117,7 @@ export type Database = {
           loja?: string | null
           merchant_id?: string | null
           merchant_logo_url?: string | null
+          comprovante_url?: string | null
           created_at?: string
         }
         Update: {
@@ -130,6 +135,7 @@ export type Database = {
           loja?: string | null
           merchant_id?: string | null
           merchant_logo_url?: string | null
+          comprovante_url?: string | null
           created_at?: string
         }
         Relationships: [

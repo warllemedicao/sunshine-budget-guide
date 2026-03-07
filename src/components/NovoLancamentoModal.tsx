@@ -102,8 +102,8 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
       setLoja(editItem.loja || "");
       setMerchantLogoUrl(editItem.merchant_logo_url || null);
       setMerchantId(editItem.merchant_id || null);
-      setReceiptPath('');
-      setReceiptFileName('');
+      setReceiptPath(editItem.comprovante_url ?? '');
+      setReceiptFileName(editItem.comprovante_url ? 'Comprovante' : '');
     } else {
       resetForm();
     }
@@ -160,6 +160,7 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
           loja,
           merchant_id: merchantId || null,
           merchant_logo_url: merchantLogoUrl || null,
+          comprovante_url: receiptPath || null,
         };
         const { error } = await supabase.from("lancamentos").update(updatePayload).eq("id", editItem.id);
         if (error) throw error;
@@ -224,6 +225,7 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
           categoria, fixa: fixo, cartao_id: metodo === "cartao" ? cartaoId || null : null, loja,
           merchant_id: merchantId || null,
           merchant_logo_url: merchantLogoUrl || null,
+          comprovante_url: receiptPath || null,
         });
         if (error) throw error;
       }
