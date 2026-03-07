@@ -376,6 +376,16 @@ const Dashboard = () => {
                   </Button>
                 )}
               </div>
+              {/* Comprovante do pagamento da fatura */}
+              {group.fatura?.comprovante_url && (
+                <div className="pt-1">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase mb-1">📸 Comprovante do Pagamento</p>
+                  <ReceiptViewer
+                    filePath={group.fatura.comprovante_url}
+                    fileName="Comprovante"
+                  />
+                </div>
+              )}
             </CardContent>
           </Card>
         );
@@ -486,6 +496,7 @@ const LancamentoRow = ({ item, onClick }: { item: Tables<"lancamentos">; onClick
 const MiniLancamentoRow = ({ item, onClick, onReceiptClick }: { item: Tables<"lancamentos">; onClick: () => void; onReceiptClick?: () => void }) => {
   const cat = getCategoriaInfo(item.categoria);
   const Icon = cat.icon;
+  const hasReceipt = !!item.comprovante_url;
   return (
     <div className="flex w-full items-center gap-2 rounded-lg bg-card p-2 border border-border hover:shadow-sm transition-shadow">
       <button onClick={onClick} className="flex flex-1 items-center gap-2 text-left min-w-0">
@@ -500,8 +511,8 @@ const MiniLancamentoRow = ({ item, onClick, onReceiptClick }: { item: Tables<"la
       {onReceiptClick && (
         <button
           onClick={onReceiptClick}
-          className="p-1 flex-shrink-0 text-muted-foreground hover:text-foreground"
-          title="Anexar comprovante"
+          className={cn("p-1 flex-shrink-0 hover:text-foreground", hasReceipt ? "text-primary" : "text-muted-foreground")}
+          title={hasReceipt ? "Visualizar comprovante" : "Anexar comprovante"}
         >
           <Paperclip className="h-3 w-3" />
         </button>
@@ -527,8 +538,8 @@ const ReceiptDespesaFixaModal = ({ open, onOpenChange, lancamento, onSaved }: Re
 
   useEffect(() => {
     if (lancamento) {
-      setReceiptPath('');
-      setReceiptFileName('');
+      setReceiptPath(lancamento.comprovante_url ?? '');
+      setReceiptFileName(lancamento.comprovante_url ? 'Comprovante' : '');
     } else {
       setReceiptPath('');
       setReceiptFileName('');
@@ -539,8 +550,11 @@ const ReceiptDespesaFixaModal = ({ open, onOpenChange, lancamento, onSaved }: Re
     if (!lancamento) return;
     setLoading(true);
     try {
-      // comprovante_url not in new schema — just close the modal
-      toast({ title: "Comprovante registrado localmente." });
+      const { error } = await supabase.from("lancamentos")
+        .update({ comprovante_url: receiptPath || null })
+        .eq("id", lancamento.id);
+      if (error) throw error;
+      toast({ title: "Comprovante salvo!" });
       onSaved();
       onOpenChange(false);
     } catch (err: any) {
@@ -608,8 +622,8 @@ const PagarFaturaModal = ({ open, onOpenChange, cartaoId, userId, mes, ano, valo
   // Reset/pre-fill receipt state whenever the modal opens or the existing invoice changes
   useEffect(() => {
     if (open) {
-      setReceiptPath('');
-      setReceiptFileName('');
+      setReceiptPath(faturaExistente?.comprovante_url ?? '');
+      setReceiptFileName(faturaExistente?.comprovante_url ? 'Comprovante' : '');
     }
   }, [open, faturaExistente]);
 
@@ -624,15 +638,16 @@ const PagarFaturaModal = ({ open, onOpenChange, cartaoId, userId, mes, ano, valo
     setLoading(true);
     try {
       const valor = parseFloat(valorPago) || valorTotal;
+      const comprovanteVal = receiptPath || null;
       if (faturaExistente) {
         const { error } = await supabase.from("faturas")
-          .update({ status: "pago", valor_total: valor })
+          .update({ status: "pago", valor_total: valor, comprovante_url: comprovanteVal })
           .eq("id", faturaExistente.id);
         if (error) throw error;
       } else {
         const { error } = await supabase.from("faturas").insert({
           usuario_id: userId, cartao_id: cartaoId, mes, ano,
-          status: "pago", valor_total: valor,
+          status: "pago", valor_total: valor, comprovante_url: comprovanteVal,
         });
         if (error) throw error;
       }
