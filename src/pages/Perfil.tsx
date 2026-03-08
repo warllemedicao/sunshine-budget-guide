@@ -12,7 +12,6 @@ import { formatCurrency } from "@/lib/formatters";
 import { User, CreditCard, Plus, Trash2, Edit2, LogOut, Check, X } from "lucide-react";
 import type { Tables } from "@/integrations/supabase/types";
 import BrandLogo from "@/components/BrandLogo";
-import { useReceipts } from "@/hooks/useReceipts";
 
 const BANK_SUGGESTIONS = [
   "Nubank",
@@ -31,7 +30,6 @@ const Perfil = () => {
   const { user, signOut } = useAuth();
   const { toast } = useToast();
   const qc = useQueryClient();
-  const { storageProvider } = useReceipts();
   const isGoogleSession = user?.app_metadata?.provider === "google";
 
   const { data: profile } = useQuery({
@@ -58,6 +56,10 @@ const Perfil = () => {
   const [editingProfile, setEditingProfile] = useState(false);
   const [nome, setNome] = useState("");
   const [email, setEmail] = useState("");
+  const [novaSenha, setNovaSenha] = useState("");
+  const [confirmacaoSenha, setConfirmacaoSenha] = useState("");
+  const [salvandoSenha, setSalvandoSenha] = useState(false);
+  const [revogandoGoogle, setRevogandoGoogle] = useState(false);
   const [showCartaoModal, setShowCartaoModal] = useState(false);
   const [editCartao, setEditCartao] = useState<Tables<"cartoes"> | null>(null);
 
@@ -109,6 +111,56 @@ const Perfil = () => {
     }
   };
 
+  const handleSalvarSenha = async () => {
+    if (novaSenha.length < 6) {
+      toast({ title: "Senha invalida", description: "A senha deve ter pelo menos 6 caracteres.", variant: "destructive" });
+      return;
+    }
+    if (novaSenha !== confirmacaoSenha) {
+      toast({ title: "Senhas diferentes", description: "Confirme a senha corretamente.", variant: "destructive" });
+      return;
+    }
+
+    setSalvandoSenha(true);
+    try {
+      const { error } = await supabase.auth.updateUser({ password: novaSenha });
+      if (error) throw error;
+
+      setNovaSenha("");
+      setConfirmacaoSenha("");
+      toast({ title: "Senha atualizada com sucesso!" });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Erro inesperado";
+      toast({ title: "Erro ao atualizar senha", description: message, variant: "destructive" });
+    } finally {
+      setSalvandoSenha(false);
+    }
+  };
+
+  const handleRevogarGoogle = async () => {
+    setRevogandoGoogle(true);
+    try {
+      const { data } = await supabase.auth.getSession();
+      const providerToken = (data.session as { provider_token?: string | null } | null)?.provider_token;
+
+      if (providerToken) {
+        await fetch("https://oauth2.googleapis.com/revoke", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({ token: providerToken }).toString(),
+        });
+      }
+
+      await signOut();
+      toast({ title: "Conexao Google revogada", description: "Faca login novamente para reconectar." });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Erro inesperado";
+      toast({ title: "Erro ao revogar conexao", description: message, variant: "destructive" });
+    } finally {
+      setRevogandoGoogle(false);
+    }
+  };
+
   return (
     <div className="mx-auto max-w-lg space-y-5 p-4">
       <h1 className="text-xl font-bold">Perfil</h1>
@@ -127,7 +179,7 @@ const Perfil = () => {
           </button>
         </CardHeader>
         {editingProfile && (
-          <CardContent className="space-y-2">
+          <CardContent className="space-y-4">
             <div className="space-y-1">
               <Label>Nome</Label>
               <Input value={nome} onChange={(e) => setNome(e.target.value)} />
@@ -139,6 +191,54 @@ const Perfil = () => {
             <Button size="sm" onClick={() => updateProfile.mutate()}>
               <Check className="h-4 w-4 mr-1" /> Salvar
             </Button>
+
+            <div className="border-t border-border pt-3 space-y-2">
+              <p className="text-sm font-medium">Seguranca da Conta</p>
+              {!isGoogleSession && (
+                <p className="text-xs text-muted-foreground">Conecte sua conta Google para salvar comprovantes na sua nuvem.</p>
+              )}
+              {!isGoogleSession && (
+                <Button type="button" variant="outline" size="sm" onClick={connectGoogle}>
+                  Conectar com Google
+                </Button>
+              )}
+              {isGoogleSession && (
+                <div className="space-y-2">
+                  <p className="text-xs text-success">Conta Google conectada para upload de comprovantes.</p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleRevogarGoogle}
+                    disabled={revogandoGoogle}
+                  >
+                    {revogandoGoogle ? "Revogando..." : "Revogar conexao Google"}
+                  </Button>
+                </div>
+              )}
+
+              <div className="space-y-1">
+                <Label>{isGoogleSession ? "Definir ou alterar senha de acesso" : "Alterar senha de acesso"}</Label>
+                <Input
+                  type="password"
+                  value={novaSenha}
+                  onChange={(e) => setNovaSenha(e.target.value)}
+                  placeholder="Nova senha"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>Confirmar nova senha</Label>
+                <Input
+                  type="password"
+                  value={confirmacaoSenha}
+                  onChange={(e) => setConfirmacaoSenha(e.target.value)}
+                  placeholder="Repita a nova senha"
+                />
+              </div>
+              <Button type="button" size="sm" variant="outline" onClick={handleSalvarSenha} disabled={salvandoSenha}>
+                {salvandoSenha ? "Salvando senha..." : "Salvar senha"}
+              </Button>
+            </div>
           </CardContent>
         )}
       </Card>
@@ -193,33 +293,6 @@ const Perfil = () => {
               </div>
             </div>
           ))}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base">Armazenamento de Arquivos</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <p className="text-xs text-muted-foreground">
-            Novos comprovantes sao enviados para o Google Drive para economizar espaco no Supabase.
-          </p>
-          <div className="rounded-md border border-border bg-secondary px-3 py-2 text-sm font-medium">
-            Destino atual: Google Drive
-          </div>
-          {!isGoogleSession && (
-            <div className="space-y-2">
-              <p className="text-xs text-muted-foreground">
-                Entre com sua conta Google para habilitar upload de comprovantes.
-              </p>
-              <Button type="button" variant="outline" className="w-full" onClick={connectGoogle}>
-                Conectar Google
-              </Button>
-            </div>
-          )}
-          {isGoogleSession && storageProvider === "google-drive" && (
-            <p className="text-xs text-success">Novo comprovante sera salvo no seu Google Drive.</p>
-          )}
         </CardContent>
       </Card>
 

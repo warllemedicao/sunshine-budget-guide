@@ -7,7 +7,17 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       (async () => {
         const formData = await event.request.formData();
-        const file = formData.get('receipt');
+        let file = formData.get('receipt');
+
+        // Some apps send shared files with a different field name.
+        if (!(file instanceof File)) {
+          for (const value of formData.values()) {
+            if (value instanceof File && value.size > 0) {
+              file = value;
+              break;
+            }
+          }
+        }
 
         if (file instanceof File && file.size > 0) {
           const cache = await caches.open(SHARE_CACHE);

@@ -2,6 +2,8 @@
   "name": "Gil Financeiro",
   "short_name": "Gil Financeiro",
   "description": "Guia de orçamento e finanças pessoais",
+  "id": "/",
+  "scope": "/",
   "start_url": "/",
   "display": "standalone",
   "display_override": ["standalone", "minimal-ui"],
@@ -33,7 +35,7 @@
       "files": [
         {
           "name": "receipt",
-          "accept": ["image/*", "application/pdf"]
+          "accept": ["image/*", "application/pdf", "application/octet-stream"]
         }
       ]
     }

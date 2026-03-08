@@ -15,6 +15,7 @@ export const ReceiptUploadButton = ({ onUploadSuccess }: ReceiptUploadButtonProp
   const { toast } = useToast();
   const [selected, setSelected] = useState<File | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
   const isGoogleSession = user?.app_metadata?.provider === 'google';
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -42,6 +43,26 @@ export const ReceiptUploadButton = ({ onUploadSuccess }: ReceiptUploadButtonProp
     }
   };
 
+  const handleOpenCamera = async () => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      toast({ title: 'Camera indisponivel', description: 'Seu dispositivo nao suporta captura direta.', variant: 'destructive' });
+      cameraInputRef.current?.click();
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      stream.getTracks().forEach((track) => track.stop());
+      cameraInputRef.current?.click();
+    } catch {
+      toast({
+        title: 'Permissao de camera negada',
+        description: 'Permita acesso a camera no navegador/celular para tirar foto do comprovante.',
+        variant: 'destructive',
+      });
+    }
+  };
+
   return (
     <div className="flex flex-col gap-2 p-3 bg-gray-50 rounded-lg border border-gray-200">
       <p className="text-xs text-muted-foreground">Destino: Google Drive (sem uso de armazenamento do Supabase).</p>
@@ -63,6 +84,15 @@ export const ReceiptUploadButton = ({ onUploadSuccess }: ReceiptUploadButtonProp
         disabled={loading}
         className="hidden"
       />
+      <input
+        ref={cameraInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        onChange={handleFileSelect}
+        disabled={loading}
+        className="hidden"
+      />
       <div className="flex gap-2">
         <Button
           type="button"
@@ -73,6 +103,15 @@ export const ReceiptUploadButton = ({ onUploadSuccess }: ReceiptUploadButtonProp
         >
           <Upload className="h-4 w-4 mr-2" />
           Selecionar Comprovante
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={handleOpenCamera}
+          disabled={loading}
+        >
+          Tirar Foto
         </Button>
         {selected && (
           <>
