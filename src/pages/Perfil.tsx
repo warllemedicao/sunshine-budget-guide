@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { useToast } from "@/hooks/use-toast";
 import { formatCurrency } from "@/lib/formatters";
 import { User, CreditCard, Plus, Trash2, Edit2, LogOut, Check, X } from "lucide-react";
-import type { Tables, TablesInsert } from "@/integrations/supabase/types";
+import type { Tables } from "@/integrations/supabase/types";
 import BrandLogo from "@/components/BrandLogo";
 
 const BANK_SUGGESTIONS = [
@@ -92,7 +92,6 @@ const Perfil = () => {
     <div className="mx-auto max-w-lg space-y-5 p-4">
       <h1 className="text-xl font-bold">Perfil</h1>
 
-      {/* Profile card */}
       <Card>
         <CardHeader className="flex flex-row items-center gap-3 pb-2">
           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
@@ -123,13 +122,17 @@ const Perfil = () => {
         )}
       </Card>
 
-      {/* Cards management */}
       <Card>
         <CardHeader className="flex flex-row items-center gap-3 pb-2">
           <CreditCard className="h-5 w-5 text-primary" />
           <CardTitle className="text-base">Meus Cartões</CardTitle>
-          <button onClick={() => { setEditCartao(null); setShowCartaoModal(true); }}
-            className="ml-auto p-1 text-muted-foreground hover:text-foreground">
+          <button
+            onClick={() => {
+              setEditCartao(null);
+              setShowCartaoModal(true);
+            }}
+            className="ml-auto p-1 text-muted-foreground hover:text-foreground"
+          >
             <Plus className="h-4 w-4" />
           </button>
         </CardHeader>
@@ -137,19 +140,33 @@ const Perfil = () => {
           {cartoes.length === 0 && <p className="text-sm text-muted-foreground">Nenhum cartão cadastrado.</p>}
           {cartoes.map((c) => (
             <div key={c.id} className="flex items-center justify-between rounded-lg bg-secondary p-3">
-              <div>
-                <p className="text-sm font-medium">{c.nome}</p>
-                <p className="text-xs text-muted-foreground">
-                  Limite: {formatCurrency(c.limite)} · Fech: {c.fechamento} · Venc: {c.vencimento}
-                </p>
+              <div className="flex items-center gap-2 min-w-0">
+                <BrandLogo
+                  store={c.nome}
+                  size={28}
+                  initialUrl={c.logo_url}
+                  merchantId={c.merchant_id}
+                  fallbackIcon={<CreditCard className="h-4 w-4 text-primary" />}
+                  fallbackBg="hsl(var(--primary) / 0.1)"
+                />
+                <div className="min-w-0">
+                  <p className="text-sm font-medium">{c.nome}</p>
+                  <p className="text-xs text-muted-foreground">
+                    Limite: {formatCurrency(c.limite)} · Fech: {c.fechamento} · Venc: {c.vencimento}
+                  </p>
+                </div>
               </div>
               <div className="flex gap-1">
-                <button onClick={() => { setEditCartao(c); setShowCartaoModal(true); }}
-                  className="p-1 text-muted-foreground hover:text-foreground">
+                <button
+                  onClick={() => {
+                    setEditCartao(c);
+                    setShowCartaoModal(true);
+                  }}
+                  className="p-1 text-muted-foreground hover:text-foreground"
+                >
                   <Edit2 className="h-4 w-4" />
                 </button>
-                <button onClick={() => deleteCartao.mutate(c.id)}
-                  className="p-1 text-muted-foreground hover:text-destructive">
+                <button onClick={() => deleteCartao.mutate(c.id)} className="p-1 text-muted-foreground hover:text-destructive">
                   <Trash2 className="h-4 w-4" />
                 </button>
               </div>
@@ -162,12 +179,7 @@ const Perfil = () => {
         <LogOut className="h-4 w-4 mr-2" /> Sair
       </Button>
 
-      <CartaoModal
-        open={showCartaoModal}
-        onOpenChange={setShowCartaoModal}
-        editItem={editCartao}
-        userId={user?.id || ""}
-      />
+      <CartaoModal open={showCartaoModal} onOpenChange={setShowCartaoModal} editItem={editCartao} userId={user?.id || ""} />
     </div>
   );
 };
@@ -185,6 +197,7 @@ const CartaoModal = ({ open, onOpenChange, editItem, userId }: CartaoModalProps)
   const [nome, setNome] = useState("");
   const [debouncedNome, setDebouncedNome] = useState("");
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [merchantId, setMerchantId] = useState<string | null>(null);
   const [limite, setLimite] = useState("");
   const [fechamento, setFechamento] = useState("1");
   const [vencimento, setVencimento] = useState("10");
@@ -194,16 +207,20 @@ const CartaoModal = ({ open, onOpenChange, editItem, userId }: CartaoModalProps)
     if (editItem) {
       setNome(editItem.nome);
       setLogoUrl(editItem.logo_url ?? null);
+      setMerchantId(editItem.merchant_id ?? null);
       setLimite(String(editItem.limite));
       setFechamento(String(editItem.fechamento));
       setVencimento(String(editItem.vencimento));
     } else {
       setLogoUrl(null);
-      setNome(""); setLimite(""); setFechamento("1"); setVencimento("10");
+      setMerchantId(null);
+      setNome("");
+      setLimite("");
+      setFechamento("1");
+      setVencimento("10");
     }
   }, [editItem, open]);
 
-  // Debounce nome changes so the logo API is not called on every keystroke.
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedNome(nome), 500);
     return () => clearTimeout(timer);
@@ -212,9 +229,7 @@ const CartaoModal = ({ open, onOpenChange, editItem, userId }: CartaoModalProps)
   const cardSuggestions = useMemo(() => {
     const term = nome.trim().toLowerCase();
     if (term.length < 2) return [];
-    return BANK_SUGGESTIONS
-      .filter((bank) => bank.toLowerCase().includes(term))
-      .slice(0, 5);
+    return BANK_SUGGESTIONS.filter((bank) => bank.toLowerCase().includes(term)).slice(0, 5);
   }, [nome]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -224,8 +239,12 @@ const CartaoModal = ({ open, onOpenChange, editItem, userId }: CartaoModalProps)
       const payload = {
         nome,
         logo_url: logoUrl,
-        limite: +limite, fechamento: +fechamento, vencimento: +vencimento,
+        merchant_id: merchantId,
+        limite: +limite,
+        fechamento: +fechamento,
+        vencimento: +vencimento,
       };
+
       if (editItem) {
         const { error } = await supabase.from("cartoes").update(payload).eq("id", editItem.id);
         if (error) throw error;
@@ -233,6 +252,7 @@ const CartaoModal = ({ open, onOpenChange, editItem, userId }: CartaoModalProps)
         const { error } = await supabase.from("cartoes").insert({ ...payload, usuario_id: userId });
         if (error) throw error;
       }
+
       qc.invalidateQueries({ queryKey: ["cartoes"] });
       toast({ title: editItem ? "Cartão atualizado!" : "Cartão adicionado!" });
       onOpenChange(false);
@@ -254,13 +274,27 @@ const CartaoModal = ({ open, onOpenChange, editItem, userId }: CartaoModalProps)
           <div className="space-y-1">
             <Label>Nome do Cartão</Label>
             <div className="flex items-center gap-2">
-              <Input value={nome} onChange={(e) => setNome(e.target.value)} required className="flex-1" />
+              <Input
+                value={nome}
+                onChange={(e) => {
+                  const nextName = e.target.value;
+                  setNome(nextName);
+                  if (editItem && nextName.trim().toLowerCase() !== editItem.nome.trim().toLowerCase()) {
+                    setLogoUrl(null);
+                    setMerchantId(null);
+                  }
+                }}
+                required
+                className="flex-1"
+              />
               {debouncedNome && (
                 <BrandLogo
                   store={debouncedNome}
                   size={32}
                   initialUrl={logoUrl}
+                  merchantId={merchantId}
                   onLogoResolved={setLogoUrl}
+                  onMerchantResolved={setMerchantId}
                 />
               )}
             </div>
@@ -273,7 +307,11 @@ const CartaoModal = ({ open, onOpenChange, editItem, userId }: CartaoModalProps)
                       key={bank}
                       type="button"
                       className="flex items-center gap-2 rounded-md border border-border bg-card px-2 py-1.5 text-left hover:bg-secondary"
-                      onClick={() => setNome(bank)}
+                      onClick={() => {
+                        setNome(bank);
+                        setLogoUrl(null);
+                        setMerchantId(null);
+                      }}
                     >
                       <BrandLogo store={bank} size={18} />
                       <span className="text-xs">{bank}</span>
@@ -283,10 +321,19 @@ const CartaoModal = ({ open, onOpenChange, editItem, userId }: CartaoModalProps)
               </div>
             )}
           </div>
-          <div className="space-y-1"><Label>Limite (R$)</Label><Input type="number" value={limite} onChange={(e) => setLimite(e.target.value)} /></div>
+          <div className="space-y-1">
+            <Label>Limite (R$)</Label>
+            <Input type="number" value={limite} onChange={(e) => setLimite(e.target.value)} />
+          </div>
           <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1"><Label>Dia fechamento</Label><Input type="number" min="1" max="31" value={fechamento} onChange={(e) => setFechamento(e.target.value)} /></div>
-            <div className="space-y-1"><Label>Dia vencimento</Label><Input type="number" min="1" max="31" value={vencimento} onChange={(e) => setVencimento(e.target.value)} /></div>
+            <div className="space-y-1">
+              <Label>Dia fechamento</Label>
+              <Input type="number" min="1" max="31" value={fechamento} onChange={(e) => setFechamento(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label>Dia vencimento</Label>
+              <Input type="number" min="1" max="31" value={vencimento} onChange={(e) => setVencimento(e.target.value)} />
+            </div>
           </div>
           <Button type="submit" className="w-full" disabled={loading}>
             {loading ? "Salvando..." : editItem ? "Atualizar" : "Adicionar"}

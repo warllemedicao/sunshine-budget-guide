@@ -40,6 +40,7 @@ const getDbComprovanteUrl = (row: unknown): string | null => {
 
 const LANCAMENTO_RECEIPT_KEY = "receipt:lancamento:";
 const FATURA_RECEIPT_KEY = "receipt:fatura:";
+const FIXED_EXPENSE_PAID_KEY = "fixed-expense-paid:";
 
 const getLocalReceipt = (key: string): string | null => {
   try {
@@ -79,8 +80,31 @@ const Dashboard = () => {
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [receiptLancamento, setReceiptLancamento] = useState<Tables<"lancamentos"> | null>(null);
   const [receiptRefreshTick, setReceiptRefreshTick] = useState(0);
+  const [fixedExpensePaidMap, setFixedExpensePaidMap] = useState<Record<string, boolean>>({});
 
   const { sharedFile, clearSharedFile } = useShareTarget();
+  const fixedExpenseStorageKey = `${FIXED_EXPENSE_PAID_KEY}${user?.id ?? "anon"}:${mes + 1}:${ano}`;
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(fixedExpenseStorageKey);
+      setFixedExpensePaidMap(raw ? (JSON.parse(raw) as Record<string, boolean>) : {});
+    } catch {
+      setFixedExpensePaidMap({});
+    }
+  }, [fixedExpenseStorageKey]);
+
+  const toggleFixedExpensePaid = (lancamentoId: string) => {
+    setFixedExpensePaidMap((prev) => {
+      const next = { ...prev, [lancamentoId]: !prev[lancamentoId] };
+      try {
+        localStorage.setItem(fixedExpenseStorageKey, JSON.stringify(next));
+      } catch {
+        // ignore localStorage failures
+      }
+      return next;
+    });
+  };
 
   // Auto-open the new transaction modal when the app receives a shared receipt
   useEffect(() => {
@@ -283,6 +307,8 @@ const Dashboard = () => {
             <MiniLancamentoRow
               key={l.id}
               item={l}
+              isPaid={!!fixedExpensePaidMap[l.id]}
+              onTogglePaid={() => toggleFixedExpensePaid(l.id)}
               onClick={() => openEdit(l)}
               onReceiptClick={() => { setReceiptLancamento(l); setShowReceiptModal(true); }}
             />
@@ -314,6 +340,8 @@ const Dashboard = () => {
               <div className="flex items-center gap-1.5 mb-0.5">
                 <BrandLogo
                   store={cartao.nome}
+                  initialUrl={cartao.logo_url}
+                  merchantId={cartao.merchant_id}
                   size={20}
                   fallbackIcon={<CreditCard className="h-3 w-3 text-primary" />}
                   fallbackBg="hsl(var(--primary) / 0.1)"
@@ -350,6 +378,8 @@ const Dashboard = () => {
                 <div className="flex flex-col items-center">
                   <BrandLogo
                     store={group.cartao.nome}
+                    initialUrl={group.cartao.logo_url}
+                    merchantId={group.cartao.merchant_id}
                     size={40}
                     fallbackIcon={<CreditCard className="h-5 w-5 text-primary" />}
                     fallbackBg="hsl(var(--primary) / 0.1)"
@@ -596,21 +626,61 @@ const LancamentoRow = ({ item, onClick, onReceiptClick }: { item: Tables<"lancam
   );
 };
 
-const MiniLancamentoRow = ({ item, onClick, onReceiptClick }: { item: Tables<"lancamentos">; onClick: () => void; onReceiptClick?: () => void }) => {
+const MiniLancamentoRow = ({
+  item,
+  isPaid,
+  onTogglePaid,
+  onClick,
+  onReceiptClick,
+}: {
+  item: Tables<"lancamentos">;
+  isPaid?: boolean;
+  onTogglePaid?: () => void;
+  onClick: () => void;
+  onReceiptClick?: () => void;
+}) => {
   const cat = getCategoriaInfo(item.categoria);
   const Icon = cat.icon;
   const hasReceipt = !!getDbComprovanteUrl(item) || !!getLocalReceipt(`${LANCAMENTO_RECEIPT_KEY}${item.id}`);
   return (
-    <div className="flex w-full items-center gap-2 rounded-lg bg-card p-2 border border-border hover:shadow-sm transition-shadow">
+    <div className={cn(
+      "flex w-full items-center gap-2 rounded-lg p-2 border hover:shadow-sm transition-shadow",
+      isPaid ? "bg-success/10 border-success/40" : "bg-card border-border",
+    )}>
       <button onClick={onClick} className="flex flex-1 items-center gap-2 text-left min-w-0">
-        <div className="flex h-6 w-6 items-center justify-center rounded-md flex-shrink-0" style={{ backgroundColor: cat.color + "20" }}>
-          <Icon className="h-3 w-3" style={{ color: cat.color }} />
-        </div>
+        {item.loja ? (
+          <BrandLogo
+            store={item.loja}
+            initialUrl={item.merchant_logo_url}
+            merchantId={item.merchant_id}
+            size={24}
+            fallbackIcon={<Icon className="h-3 w-3" style={{ color: cat.color }} />}
+            fallbackBg={cat.color + "20"}
+          />
+        ) : (
+          <div className="flex h-6 w-6 items-center justify-center rounded-md flex-shrink-0" style={{ backgroundColor: cat.color + "20" }}>
+            <Icon className="h-3 w-3" style={{ color: cat.color }} />
+          </div>
+        )}
         <div className="flex-1 min-w-0">
           <p className="text-xs font-medium truncate">{item.descricao}</p>
         </div>
         <p className="text-xs font-semibold">{formatCurrency(item.valor)}</p>
       </button>
+      {onTogglePaid && (
+        <button
+          onClick={onTogglePaid}
+          className={cn(
+            "rounded-md border px-2 py-1 text-[10px] font-semibold transition-colors",
+            isPaid
+              ? "border-success/40 bg-success/20 text-success"
+              : "border-border bg-secondary text-muted-foreground hover:text-foreground",
+          )}
+          title={isPaid ? "Marcar como pendente" : "Marcar como pago"}
+        >
+          {isPaid ? "Pago" : "Pagar"}
+        </button>
+      )}
       {onReceiptClick && (
         <button
           onClick={onReceiptClick}

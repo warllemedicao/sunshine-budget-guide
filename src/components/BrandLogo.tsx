@@ -47,6 +47,7 @@ const BrandLogo = ({ store, fallbackIcon, fallbackBg, size = 28, initialUrl, mer
   const [logoSrc, setLogoSrc] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   const [loading, setLoading] = useState(!!store);
+  const [forceLookupWithoutInitial, setForceLookupWithoutInitial] = useState(false);
   const candidateUrlsRef = useRef<string[]>([]);
   const currentCandidateIndexRef = useRef(0);
   // Track any blob URL we created so we can revoke it on cleanup.
@@ -68,34 +69,38 @@ const BrandLogo = ({ store, fallbackIcon, fallbackBg, size = 28, initialUrl, mer
     return rawClientId ? String(rawClientId).replace(/[^a-zA-Z0-9-]/g, "") : null;
   };
 
-  const getPreferredFoodDomain = (storeName: string): string | null => {
+  const getPreferredDomains = (storeName: string): string[] => {
     const normalized = storeName.trim().toLowerCase();
-    const rules: Array<{ pattern: RegExp; domain: string }> = [
+    const rules: Array<{ pattern: RegExp; domains: string[] }> = [
       // Banks and fintechs commonly used in Brazil
-      { pattern: /\bnubank\b|\bnu\b/, domain: "nubank.com.br" },
-      { pattern: /\bcaixa\b|\bcaixa economica\b/, domain: "caixa.gov.br" },
-      { pattern: /\bsantander\b/, domain: "santander.com.br" },
-      { pattern: /\bbradesco\b/, domain: "bradesco.com.br" },
-      { pattern: /\bitau\b|\bita[uú]\b/, domain: "itau.com.br" },
-      { pattern: /\bbanco do brasil\b|\bbb\b/, domain: "bb.com.br" },
-      { pattern: /\binter\b/, domain: "bancointer.com.br" },
-      { pattern: /\bpicpay\b/, domain: "picpay.com" },
-      { pattern: /\bmercado pago\b|\bmercadopago\b/, domain: "mercadopago.com.br" },
-      { pattern: /\bpagbank\b|\bpagseguro\b/, domain: "pagbank.com.br" },
+      { pattern: /\bnubank\b|\bnu\b/, domains: ["nubank.com.br", "nu.com.br"] },
+      { pattern: /\bcaixa\b|\bcaixa econ[oô]mica\b/, domains: ["caixa.gov.br", "caixa.com.br", "caixaeconomica.gov.br"] },
+      { pattern: /\bsantander\b/, domains: ["santander.com.br"] },
+      { pattern: /\bbradesco\b/, domains: ["bradesco.com.br"] },
+      { pattern: /\bitau\b|\bita[uú]\b/, domains: ["itau.com.br"] },
+      { pattern: /\bbanco do brasil\b|\bbb\b/, domains: ["bb.com.br", "bancodobrasil.com.br"] },
+      { pattern: /\binter\b/, domains: ["bancointer.com.br", "inter.co"] },
+      { pattern: /\bpicpay\b/, domains: ["picpay.com"] },
+      { pattern: /\bmercado pago\b|\bmercadopago\b/, domains: ["mercadopago.com.br", "mercadopago.com"] },
+      { pattern: /\bpagbank\b|\bpagseguro\b/, domains: ["pagbank.com.br", "pagseguro.uol.com.br"] },
 
       // Food, delivery and regional apps
-      { pattern: /\bifood\b/, domain: "ifood.com.br" },
-      { pattern: /\b99\s*food\b|\b99food\b|\b99\s*entrega\b/, domain: "99app.com" },
-      { pattern: /\buber\s*eats\b|\bubereats\b/, domain: "ubereats.com" },
-      { pattern: /\brappi\b/, domain: "rappi.com.br" },
-      { pattern: /\baiqfome\b/, domain: "aiqfome.com" },
-      { pattern: /\bjames\s*delivery\b|\bjames\b/, domain: "jamesdelivery.com.br" },
-      { pattern: /\banota\s*ai\b|\banotai\b/, domain: "anota.ai" },
-      { pattern: /\bze\s*delivery\b|\bz[eé]\s*delivery\b/, domain: "zedelivery.com.br" },
+      { pattern: /\bifood\b/, domains: ["ifood.com.br"] },
+      { pattern: /\b99\s*food\b|\b99food\b|\b99\s*entrega\b/, domains: ["99app.com"] },
+      { pattern: /\buber\s*eats\b|\bubereats\b/, domains: ["ubereats.com"] },
+      { pattern: /\brappi\b/, domains: ["rappi.com.br"] },
+      { pattern: /\baiqfome\b/, domains: ["aiqfome.com"] },
+      { pattern: /\bjames\s*delivery\b|\bjames\b/, domains: ["jamesdelivery.com.br"] },
+      { pattern: /\banota\s*ai\b|\banotai\b/, domains: ["anota.ai"] },
+      { pattern: /\bze\s*delivery\b|\bz[eé]\s*delivery\b/, domains: ["zedelivery.com.br"] },
     ];
     const match = rules.find((rule) => rule.pattern.test(normalized));
-    return match?.domain ?? null;
+    return match?.domains ?? [];
   };
+
+  useEffect(() => {
+    setForceLookupWithoutInitial(false);
+  }, [store, initialUrl, merchantId]);
 
   useEffect(() => {
     // Revoke any previous blob URL before starting a new resolution.
@@ -120,8 +125,10 @@ const BrandLogo = ({ store, fallbackIcon, fallbackBg, size = 28, initialUrl, mer
     // Blob URLs are session-specific and become invalid after a page refresh.
     // If the stored initialUrl is a stale blob (written by a previous bug),
     // skip the fast path so the logo is re-fetched through the normal pipeline.
-    if (initialUrl && !initialUrl.startsWith("blob:")) {
+    if (initialUrl && !initialUrl.startsWith("blob:") && !forceLookupWithoutInitial) {
       isExternalUrlRef.current = false;
+      candidateUrlsRef.current = [initialUrl];
+      currentCandidateIndexRef.current = 0;
       setLogoSrc(initialUrl);
       setLoading(false);
       onLogoResolvedRef.current?.(initialUrl);
@@ -175,21 +182,25 @@ const BrandLogo = ({ store, fallbackIcon, fallbackBg, size = 28, initialUrl, mer
       }
 
       // ── Step 4: External APIs ──────────────────────────────────────────────
-      // Prefer known food-delivery domains first, then fallback to Brandfetch search.
-      const preferredDomain = getPreferredFoodDomain(store);
-      const domain = preferredDomain ?? await searchBrandfetchDomain(store);
+      // Prefer known bank/food domains first, then fallback to Brandfetch search.
+      const preferredDomains = getPreferredDomains(store);
+      const searchedDomain = await searchBrandfetchDomain(store);
       if (cancelled) return;
 
       const clientId = getClientId();
       let candidates: string[];
-      if (domain) {
+      const allDomains = Array.from(new Set([
+        ...preferredDomains,
+        ...(searchedDomain ? [searchedDomain] : []),
+      ]));
+      if (allDomains.length > 0) {
         // Try multiple providers for better resilience across Brazilian banks.
-        candidates = [
+        candidates = allDomains.flatMap((domain) => [
           ...(clientId ? [`https://cdn.brandfetch.io/${domain}/w/56/h/56?c=${clientId}`] : []),
           `https://logo.clearbit.com/${domain}`,
           `https://icons.duckduckgo.com/ip3/${domain}.ico`,
           `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=128`,
-        ];
+        ]);
         isExternalUrlRef.current = true;
       } else {
         // No domain found — use Google Favicon as a best-effort display
@@ -214,7 +225,7 @@ const BrandLogo = ({ store, fallbackIcon, fallbackBg, size = 28, initialUrl, mer
         blobUrlRef.current = null;
       }
     };
-  }, [store, initialUrl, merchantId]); // onLogoResolved/onMerchantResolved intentionally omitted — tracked via refs
+  }, [store, initialUrl, merchantId, forceLookupWithoutInitial]); // onLogoResolved/onMerchantResolved intentionally omitted — tracked via refs
 
   const handleImageLoad = () => {
     if (logoSrc) {
@@ -226,6 +237,8 @@ const BrandLogo = ({ store, fallbackIcon, fallbackBg, size = 28, initialUrl, mer
     if (!logoSrc || !isExternalUrlRef.current) return;
     uploadLogoToSupabase(store, logoSrc).then((publicUrl) => {
       if (publicUrl) {
+        setLogoSrc(publicUrl);
+        onLogoResolvedRef.current?.(publicUrl);
         saveMerchantLogoUrl(store, publicUrl);
         // Create or update the merchant record and propagate the merchant ID.
         findOrCreateMerchant(store, null, publicUrl).then((merchant) => {
@@ -242,6 +255,13 @@ const BrandLogo = ({ store, fallbackIcon, fallbackBg, size = 28, initialUrl, mer
     if (nextIndex < candidateUrlsRef.current.length) {
       currentCandidateIndexRef.current = nextIndex;
       setLogoSrc(candidateUrlsRef.current[nextIndex]);
+      return;
+    }
+
+    // If the persisted initial URL fails, retry with full lookup (cache/Supabase/providers).
+    if (initialUrl && !forceLookupWithoutInitial) {
+      setForceLookupWithoutInitial(true);
+      setLoading(true);
       return;
     }
 
