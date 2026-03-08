@@ -329,6 +329,13 @@ const Dashboard = () => {
                       {/* Right: value + actions */}
                       <div className="flex items-center gap-0.5 flex-shrink-0">
                         <p className="text-xs font-semibold">{formatCurrency(l.valor)}</p>
+                        <button
+                          onClick={() => { setReceiptLancamento(l); setShowReceiptModal(true); }}
+                          className={cn("p-1 hover:text-foreground", l.comprovante_url ? "text-primary" : "text-muted-foreground")}
+                          title={l.comprovante_url ? "Visualizar comprovante" : "Anexar comprovante"}
+                        >
+                          <Paperclip className="h-3 w-3" />
+                        </button>
                         <button onClick={() => openEdit(l)} className="p-1 text-muted-foreground hover:text-foreground">
                           <Edit2 className="h-3 w-3" />
                         </button>
@@ -376,6 +383,16 @@ const Dashboard = () => {
                   </Button>
                 )}
               </div>
+              {/* Comprovante do pagamento da fatura */}
+              {group.fatura?.comprovante_url && (
+                <div className="pt-1">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase mb-1">📸 Comprovante do Pagamento</p>
+                  <ReceiptViewer
+                    filePath={group.fatura.comprovante_url}
+                    fileName="Comprovante"
+                  />
+                </div>
+              )}
             </CardContent>
           </Card>
         );
@@ -393,7 +410,7 @@ const Dashboard = () => {
           </p>
           <div className="space-y-2">
             {stats.orfaos.map((l) => (
-              <LancamentoRow key={l.id} item={l} onClick={() => openEdit(l)} />
+              <LancamentoRow key={l.id} item={l} onClick={() => openEdit(l)} onReceiptClick={() => { setReceiptLancamento(l); setShowReceiptModal(true); }} />
             ))}
           </div>
         </div>
@@ -403,7 +420,7 @@ const Dashboard = () => {
       {stats.variaveis.length > 0 && (
         <Section title="Variáveis" icon={<ShoppingBag className="h-4 w-4 text-warning" />}>
           {stats.variaveis.map((l) => (
-            <LancamentoRow key={l.id} item={l} onClick={() => openEdit(l)} />
+            <LancamentoRow key={l.id} item={l} onClick={() => openEdit(l)} onReceiptClick={() => { setReceiptLancamento(l); setShowReceiptModal(true); }} />
           ))}
         </Section>
       )}
@@ -460,32 +477,45 @@ const Section = ({ title, icon, children }: { title: string; icon: React.ReactNo
   </div>
 );
 
-const LancamentoRow = ({ item, onClick }: { item: Tables<"lancamentos">; onClick: () => void }) => {
+const LancamentoRow = ({ item, onClick, onReceiptClick }: { item: Tables<"lancamentos">; onClick: () => void; onReceiptClick?: () => void }) => {
   const cat = getCategoriaInfo(item.categoria);
   const Icon = cat.icon;
+  const hasReceipt = !!item.comprovante_url;
   return (
-    <button onClick={onClick} className="flex w-full items-center gap-3 rounded-lg bg-card p-3 text-left shadow-sm hover:shadow-md transition-shadow border border-border">
-      {item.loja ? (
-        <BrandLogo store={item.loja} initialUrl={item.merchant_logo_url} size={36} fallbackIcon={<Icon className="h-4 w-4" style={{ color: cat.color }} />} fallbackBg={cat.color + "20"} />
-      ) : (
-        <div className="flex h-9 w-9 items-center justify-center rounded-lg" style={{ backgroundColor: cat.color + "20" }}>
-          <Icon className="h-4 w-4" style={{ color: cat.color }} />
+    <div className="flex w-full items-center gap-2 rounded-lg bg-card border border-border shadow-sm hover:shadow-md transition-shadow">
+      <button onClick={onClick} className="flex flex-1 items-center gap-3 p-3 text-left min-w-0">
+        {item.loja ? (
+          <BrandLogo store={item.loja} initialUrl={item.merchant_logo_url} size={36} fallbackIcon={<Icon className="h-4 w-4" style={{ color: cat.color }} />} fallbackBg={cat.color + "20"} />
+        ) : (
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg flex-shrink-0" style={{ backgroundColor: cat.color + "20" }}>
+            <Icon className="h-4 w-4" style={{ color: cat.color }} />
+          </div>
+        )}
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium truncate">{item.descricao}</p>
+          <p className="text-xs text-muted-foreground">{cat.label}{item.loja ? ` · ${item.loja}` : ""}</p>
         </div>
+        <p className="text-sm font-semibold text-foreground flex-shrink-0">
+          -{formatCurrency(item.valor)}
+        </p>
+      </button>
+      {onReceiptClick && (
+        <button
+          onClick={onReceiptClick}
+          className={cn("p-2 flex-shrink-0 hover:text-foreground", hasReceipt ? "text-primary" : "text-muted-foreground")}
+          title={hasReceipt ? "Visualizar comprovante" : "Anexar comprovante"}
+        >
+          <Paperclip className="h-4 w-4" />
+        </button>
       )}
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium truncate">{item.descricao}</p>
-        <p className="text-xs text-muted-foreground">{cat.label}{item.loja ? ` · ${item.loja}` : ""}</p>
-      </div>
-      <p className="text-sm font-semibold text-foreground">
-        -{formatCurrency(item.valor)}
-      </p>
-    </button>
+    </div>
   );
 };
 
 const MiniLancamentoRow = ({ item, onClick, onReceiptClick }: { item: Tables<"lancamentos">; onClick: () => void; onReceiptClick?: () => void }) => {
   const cat = getCategoriaInfo(item.categoria);
   const Icon = cat.icon;
+  const hasReceipt = !!item.comprovante_url;
   return (
     <div className="flex w-full items-center gap-2 rounded-lg bg-card p-2 border border-border hover:shadow-sm transition-shadow">
       <button onClick={onClick} className="flex flex-1 items-center gap-2 text-left min-w-0">
@@ -500,8 +530,8 @@ const MiniLancamentoRow = ({ item, onClick, onReceiptClick }: { item: Tables<"la
       {onReceiptClick && (
         <button
           onClick={onReceiptClick}
-          className="p-1 flex-shrink-0 text-muted-foreground hover:text-foreground"
-          title="Anexar comprovante"
+          className={cn("p-1 flex-shrink-0 hover:text-foreground", hasReceipt ? "text-primary" : "text-muted-foreground")}
+          title={hasReceipt ? "Visualizar comprovante" : "Anexar comprovante"}
         >
           <Paperclip className="h-3 w-3" />
         </button>
@@ -527,8 +557,8 @@ const ReceiptDespesaFixaModal = ({ open, onOpenChange, lancamento, onSaved }: Re
 
   useEffect(() => {
     if (lancamento) {
-      setReceiptPath('');
-      setReceiptFileName('');
+      setReceiptPath(lancamento.comprovante_url ?? '');
+      setReceiptFileName(lancamento.comprovante_url ? 'Comprovante' : '');
     } else {
       setReceiptPath('');
       setReceiptFileName('');
@@ -539,8 +569,11 @@ const ReceiptDespesaFixaModal = ({ open, onOpenChange, lancamento, onSaved }: Re
     if (!lancamento) return;
     setLoading(true);
     try {
-      // comprovante_url not in new schema — just close the modal
-      toast({ title: "Comprovante registrado localmente." });
+      const { error } = await supabase.from("lancamentos")
+        .update({ comprovante_url: receiptPath || null })
+        .eq("id", lancamento.id);
+      if (error) throw error;
+      toast({ title: "Comprovante salvo!" });
       onSaved();
       onOpenChange(false);
     } catch (err: any) {
@@ -608,8 +641,8 @@ const PagarFaturaModal = ({ open, onOpenChange, cartaoId, userId, mes, ano, valo
   // Reset/pre-fill receipt state whenever the modal opens or the existing invoice changes
   useEffect(() => {
     if (open) {
-      setReceiptPath('');
-      setReceiptFileName('');
+      setReceiptPath(faturaExistente?.comprovante_url ?? '');
+      setReceiptFileName(faturaExistente?.comprovante_url ? 'Comprovante' : '');
     }
   }, [open, faturaExistente]);
 
@@ -624,15 +657,16 @@ const PagarFaturaModal = ({ open, onOpenChange, cartaoId, userId, mes, ano, valo
     setLoading(true);
     try {
       const valor = parseFloat(valorPago) || valorTotal;
+      const comprovanteVal = receiptPath || null;
       if (faturaExistente) {
         const { error } = await supabase.from("faturas")
-          .update({ status: "pago", valor_total: valor })
+          .update({ status: "pago", valor_total: valor, comprovante_url: comprovanteVal })
           .eq("id", faturaExistente.id);
         if (error) throw error;
       } else {
         const { error } = await supabase.from("faturas").insert({
           usuario_id: userId, cartao_id: cartaoId, mes, ano,
-          status: "pago", valor_total: valor,
+          status: "pago", valor_total: valor, comprovante_url: comprovanteVal,
         });
         if (error) throw error;
       }
