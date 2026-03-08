@@ -13,6 +13,7 @@ import Dashboard from "@/pages/Dashboard";
 import Objetivos from "@/pages/Objetivos";
 import Graficos from "@/pages/Graficos";
 import Perfil from "@/pages/Perfil";
+import Chat from "@/pages/Chat";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -50,6 +51,7 @@ const App = () => {
                 <Route path="/objetivos" element={<Objetivos />} />
                 <Route path="/graficos" element={<Graficos />} />
                 <Route path="/perfil" element={<Perfil />} />
+                <Route path="/chat" element={<Chat />} />
               </Route>
               <Route path="*" element={<NotFound />} />
             </Routes>

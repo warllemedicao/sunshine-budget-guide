@@ -1,4 +1,4 @@
-import { Home, Target, PieChart, User, Plus } from "lucide-react";
+import { Home, Target, PieChart, User, Plus, MessageCircle } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 
@@ -10,6 +10,7 @@ const tabs = [
   { path: "/", icon: Home, label: "Início" },
   { path: "/objetivos", icon: Target, label: "Objetivos" },
   { path: "/graficos", icon: PieChart, label: "Gráficos" },
+  { path: "/chat", icon: MessageCircle, label: "Chat" },
   { path: "/perfil", icon: User, label: "Perfil" },
 ];
 
