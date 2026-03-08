@@ -18,6 +18,8 @@ export type Database = {
           fechamento: number
           vencimento: number
           created_at: string
+          merchant_id: string | null
+          logo_url: string | null
         }
         Insert: {
           id?: string
@@ -27,6 +29,8 @@ export type Database = {
           fechamento?: number
           vencimento?: number
           created_at?: string
+          merchant_id?: string | null
+          logo_url?: string | null
         }
         Update: {
           id?: string
@@ -36,8 +40,18 @@ export type Database = {
           fechamento?: number
           vencimento?: number
           created_at?: string
+          merchant_id?: string | null
+          logo_url?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "cartoes_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       faturas: {
         Row: {
@@ -48,7 +62,6 @@ export type Database = {
           ano: number
           valor_total: number
           status: 'pago' | 'pendente'
-          comprovante_url: string | null
           created_at: string
         }
         Insert: {
@@ -59,7 +72,6 @@ export type Database = {
           ano: number
           valor_total?: number
           status?: 'pago' | 'pendente'
-          comprovante_url?: string | null
           created_at?: string
         }
         Update: {
@@ -70,7 +82,6 @@ export type Database = {
           ano?: number
           valor_total?: number
           status?: 'pago' | 'pendente'
-          comprovante_url?: string | null
           created_at?: string
         }
         Relationships: [
@@ -91,6 +102,7 @@ export type Database = {
           valor: number
           data: string
           data_compra: string | null
+          tipo: string
           categoria: string
           fixa: boolean
           cartao_id: string | null
@@ -99,7 +111,6 @@ export type Database = {
           loja: string | null
           merchant_id: string | null
           merchant_logo_url: string | null
-          comprovante_url: string | null
           created_at: string
         }
         Insert: {
@@ -109,6 +120,7 @@ export type Database = {
           valor?: number
           data?: string
           data_compra?: string | null
+          tipo?: string
           categoria?: string
           fixa?: boolean
           cartao_id?: string | null
@@ -117,7 +129,6 @@ export type Database = {
           loja?: string | null
           merchant_id?: string | null
           merchant_logo_url?: string | null
-          comprovante_url?: string | null
           created_at?: string
         }
         Update: {
@@ -127,6 +138,7 @@ export type Database = {
           valor?: number
           data?: string
           data_compra?: string | null
+          tipo?: string
           categoria?: string
           fixa?: boolean
           cartao_id?: string | null
@@ -135,7 +147,6 @@ export type Database = {
           loja?: string | null
           merchant_id?: string | null
           merchant_logo_url?: string | null
-          comprovante_url?: string | null
           created_at?: string
         }
         Relationships: [

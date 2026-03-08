@@ -18,6 +18,12 @@ import { ReceiptViewer } from '@/components/ReceiptViewer';
 import { useReceipts } from '@/hooks/useReceipts';
 import BrandLogo from '@/components/BrandLogo';
 import { findOrCreateMerchant, uploadMerchantLogoFile } from "@/lib/merchantLogo";
+
+type SupabaseLikeError = {
+  message?: string;
+  details?: string;
+  hint?: string;
+};
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -124,9 +130,10 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
       setLoja(editItem.loja || "");
       setMerchantLogoUrl(editItem.merchant_logo_url || null);
       setMerchantId(editItem.merchant_id || null);
+      setTipo(editItem.tipo === "receita" ? "receita" : "despesa");
       setUsarReservaReceita(false);
-      setReceiptPath(editItem.comprovante_url ?? '');
-      setReceiptFileName(editItem.comprovante_url ? 'Comprovante' : '');
+      setReceiptPath('');
+      setReceiptFileName('');
     } else {
       resetForm();
     }
@@ -199,7 +206,8 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
     try {
       const valorNum = parseFloat(valor);
       if (isNaN(valorNum) || valorNum <= 0) throw new Error("Valor inválido");
-      const valorEfetivo = isReceita ? -valorNum : valorNum;
+      const valorEfetivo = valorNum;
+      const tipoEfetivo = isReceita ? "receita" : "despesa";
 
       if (isReceita && usarReservaReceita) {
         const { data: reserva, error: reservaError } = await supabase
@@ -238,13 +246,13 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
           descricao, valor: valorEfetivo,
           data: effectiveDataEdit,
           data_compra: data,
+          tipo: tipoEfetivo,
           categoria, fixa: fixaEfetiva,
           cartao_id: metodoEfetivo === "cartao" ? cartaoId || null : null,
           parcelas: metodoEfetivo === "cartao" ? parseInt(totalParcelas) : null,
           loja,
           merchant_id: merchantId || null,
           merchant_logo_url: merchantLogoUrl || null,
-          comprovante_url: receiptPath || null,
         };
         const { error } = await supabase.from("lancamentos").update(updatePayload).eq("id", editItem.id);
         if (error) throw error;
@@ -259,6 +267,7 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
             usuario_id: user.id, descricao, valor: valorEfetivo,
             data: d.toISOString().split("T")[0],
             data_compra: data,
+            tipo: "despesa",
             categoria, fixa: true,
             cartao_id: null, loja,
             merchant_id: merchantId || null,
@@ -284,6 +293,7 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
             usuario_id: user.id, descricao: `${descricao} (${i + 1}/${numParcelas})`,
             valor: valorParcela, data: d.toISOString().split("T")[0],
             data_compra: data,
+            tipo: "despesa",
             categoria, fixa: false,
             cartao_id: cartaoId || null,
             parcela_atual: i + 1, parcelas: numParcelas,
@@ -306,10 +316,10 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
         const { error } = await supabase.from("lancamentos").insert({
           usuario_id: user.id, descricao, valor: valorEfetivo, data: effectiveData,
           data_compra: data,
+          tipo: tipoEfetivo,
           categoria, fixa: fixaEfetiva, cartao_id: metodoEfetivo === "cartao" ? cartaoId || null : null, loja,
           merchant_id: merchantId || null,
           merchant_logo_url: merchantLogoUrl || null,
-          comprovante_url: receiptPath || null,
         });
         if (error) throw error;
       }
@@ -319,7 +329,12 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
       onOpenChange(false);
       resetForm();
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Erro inesperado";
+      const supabaseErr = err as SupabaseLikeError;
+      const message = err instanceof Error
+        ? err.message
+        : (typeof supabaseErr?.message === "string" && supabaseErr.message.trim().length > 0
+          ? `${supabaseErr.message}${supabaseErr.details ? ` (${supabaseErr.details})` : ""}`
+          : "Erro inesperado");
       toast({ title: "Erro", description: message, variant: "destructive" });
     } finally {
       setLoading(false);
