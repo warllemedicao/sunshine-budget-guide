@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { Wallet } from "lucide-react";
+import { getAuthRedirectUrl } from "@/lib/authRedirect";
 
 const Auth = () => {
   const [isLogin, setIsLogin] = useState(true);
@@ -13,6 +14,7 @@ const Auth = () => {
   const [nome, setNome] = useState("");
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
+  const authRedirectUrl = getAuthRedirectUrl();
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,7 +30,7 @@ const Auth = () => {
           password,
           options: {
             data: { nome },
-            emailRedirectTo: window.location.origin,
+            emailRedirectTo: authRedirectUrl,
           },
         });
         if (error) throw error;
@@ -55,7 +57,7 @@ const Auth = () => {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: window.location.origin,
+          redirectTo: authRedirectUrl,
           scopes: "openid email profile https://www.googleapis.com/auth/drive.file",
           queryParams: {
             access_type: "offline",

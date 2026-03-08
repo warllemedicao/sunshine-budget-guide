@@ -12,6 +12,7 @@ import { formatCurrency } from "@/lib/formatters";
 import { User, CreditCard, Plus, Trash2, Edit2, LogOut, Check, X } from "lucide-react";
 import type { Tables } from "@/integrations/supabase/types";
 import BrandLogo from "@/components/BrandLogo";
+import { getAuthRedirectUrl } from "@/lib/authRedirect";
 
 const BANK_SUGGESTIONS = [
   "Nubank",
@@ -31,6 +32,7 @@ const Perfil = () => {
   const { toast } = useToast();
   const qc = useQueryClient();
   const isGoogleSession = user?.app_metadata?.provider === "google";
+  const authRedirectUrl = getAuthRedirectUrl();
 
   const { data: profile } = useQuery({
     queryKey: ["profile", user?.id],
@@ -97,7 +99,7 @@ const Perfil = () => {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: window.location.origin,
+        redirectTo: authRedirectUrl,
         scopes: "openid email profile https://www.googleapis.com/auth/drive.file",
         queryParams: {
           access_type: "offline",

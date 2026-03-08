@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { getAuthRedirectUrl } from "@/lib/authRedirect";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { Fingerprint, Lock, Mail } from "lucide-react";
@@ -44,6 +45,7 @@ const AppLockScreen = ({ userEmail, onUnlock }: AppLockScreenProps) => {
   const [hasBiometric, setHasBiometric] = useState(false);
   const [recoveryEmail, setRecoveryEmail] = useState(userEmail);
   const [recoverySent, setRecoverySent] = useState(false);
+  const authRedirectUrl = getAuthRedirectUrl();
 
   useEffect(() => {
     const stored = localStorage.getItem(BIOMETRIC_CREDENTIAL_KEY);
@@ -179,7 +181,7 @@ const AppLockScreen = ({ userEmail, onUnlock }: AppLockScreenProps) => {
     setLoading(true);
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(recoveryEmail, {
-        redirectTo: window.location.origin,
+        redirectTo: authRedirectUrl,
       });
       if (error) throw error;
       setRecoverySent(true);
