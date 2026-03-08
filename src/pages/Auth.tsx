@@ -37,10 +37,11 @@ const Auth = () => {
           description: "Verifique seu email para confirmar o cadastro.",
         });
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Erro inesperado";
       toast({
         title: "Erro",
-        description: error.message,
+        description: message,
         variant: "destructive",
       });
     } finally {

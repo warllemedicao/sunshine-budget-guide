@@ -214,6 +214,32 @@ export async function uploadLogoToSupabase(
 }
 
 /**
+ * Uploads a user-selected logo file to Supabase Storage and returns its public URL.
+ * This is used as a manual fallback when external APIs cannot resolve a store logo.
+ */
+export async function uploadMerchantLogoFile(store: string, file: File): Promise<string | null> {
+  try {
+    const filename = sanitizeStoreName(store);
+    const contentType = file.type || "image/png";
+    const { error } = await supabase.storage
+      .from(BUCKET)
+      .upload(filename, file, { contentType, upsert: true });
+
+    if (error) {
+      console.warn("[MerchantLogo] Manual upload error:", error.message);
+      return null;
+    }
+
+    await saveLogoToLocalCache(store, file);
+    const { data } = supabase.storage.from(BUCKET).getPublicUrl(filename);
+    return data?.publicUrl ?? null;
+  } catch (err) {
+    console.warn("[MerchantLogo] Manual upload failed:", err);
+    return null;
+  }
+}
+
+/**
  * Updates the merchant_logo_url field on all lancamentos rows that share
  * the given store name (loja).
  */

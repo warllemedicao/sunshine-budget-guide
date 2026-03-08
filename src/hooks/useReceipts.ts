@@ -18,8 +18,9 @@ export const useReceipts = () => {
       if (error) throw error;
       toast({ title: 'Comprovante enviado!' });
       return data.path;
-    } catch (error: any) {
-      toast({ title: 'Erro', description: error.message, variant: 'destructive' });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Erro inesperado';
+      toast({ title: 'Erro', description: message, variant: 'destructive' });
       return null;
     } finally {
       setLoading(false);

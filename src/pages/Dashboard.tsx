@@ -24,6 +24,8 @@ import { cn } from "@/lib/utils";
 import { useShareTarget } from "@/hooks/useShareTarget";
 import BrandLogo from "@/components/BrandLogo";
 
+const getInstallmentBaseDescription = (descricao: string): string => descricao.replace(/ \(\d+\/\d+\)$/, "");
+
 const Dashboard = () => {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -86,12 +88,13 @@ const Dashboard = () => {
   });
 
   const stats = useMemo(() => {
-    // Note: the new schema does not have a `tipo` (receita/despesa) column.
-    // All lancamentos are treated as expenses. Income tracking is preserved
-    // in the UI but not persisted to the database with this schema version.
-    const despesas = lancamentos;
-    const totalReceita = 0;
+    // Revenue entries are represented as negative values in `lancamentos`.
+    // This keeps compatibility with the current schema while allowing income tracking.
+    const receitas = lancamentos.filter((l) => l.valor < 0);
+    const despesas = lancamentos.filter((l) => l.valor >= 0);
+    const totalReceita = receitas.reduce((s, l) => s + Math.abs(l.valor), 0);
     const totalDespesa = despesas.reduce((s, l) => s + l.valor, 0);
+    const fixasReceita = receitas.filter((l) => l.fixa && !l.cartao_id);
     const fixasDespesa = despesas.filter((l) => l.fixa && !l.cartao_id);
     const cartaoIds = new Set(cartoes.map((c) => c.id));
     // Only include card expenses that are linked to an existing card
@@ -101,7 +104,7 @@ const Dashboard = () => {
     const orfaos = cartoesLoaded
       ? despesas.filter((l) => !!l.cartao_id && !cartaoIds.has(l.cartao_id))
       : [];
-    return { totalReceita, totalDespesa, fixasReceita: [], fixasDespesa, cartaoLanc, variaveis, orfaos };
+    return { totalReceita, totalDespesa, fixasReceita, fixasDespesa, cartaoLanc, variaveis, orfaos };
   }, [lancamentos, cartoes, cartoesLoaded]);
 
   const saldo = stats.totalReceita - stats.totalDespesa;
@@ -138,15 +141,46 @@ const Dashboard = () => {
 
   const deleteLancamento = useMutation({
     mutationFn: async (l: Tables<"lancamentos">) => {
+      const isInstallment = !!l.parcela_atual && !!l.parcelas && !!l.cartao_id;
+      if (isInstallment && user) {
+        const baseDescricao = getInstallmentBaseDescription(l.descricao);
+        const suffixPattern = new RegExp(`^${baseDescricao.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} \\(\\d+\\/${l.parcelas}\\)$`);
+
+        const { data: related, error: selectError } = await supabase
+          .from("lancamentos")
+          .select("id, descricao")
+          .eq("usuario_id", user.id)
+          .eq("cartao_id", l.cartao_id)
+          .eq("parcelas", l.parcelas)
+          .eq("data_compra", l.data_compra ?? l.data);
+        if (selectError) throw selectError;
+
+        const ids = (related ?? [])
+          .filter((item) => suffixPattern.test(item.descricao))
+          .map((item) => item.id);
+
+        if (ids.length > 1) {
+          const { error: deleteGroupError } = await supabase.from("lancamentos").delete().in("id", ids);
+          if (deleteGroupError) throw deleteGroupError;
+          return ids.length;
+        }
+      }
+
       const { error } = await supabase.from("lancamentos").delete().eq("id", l.id);
       if (error) throw error;
+      return 1;
     },
-    onSuccess: () => {
+    onSuccess: (deletedCount) => {
       qc.invalidateQueries({ queryKey: ["lancamentos"] });
-      toast({ title: "Compra removida!" });
+      if ((deletedCount ?? 1) > 1) {
+        toast({ title: `${deletedCount} parcelas removidas!` });
+      } else {
+        toast({ title: "Compra removida!" });
+      }
     },
-    onError: (err: any) => {
-      toast({ title: "Erro ao excluir", description: err.message, variant: "destructive" });
+    onError: (err: unknown) => {
+      const message = err instanceof Error ? err.message : "Erro inesperado";
+      toast({ title: "Erro ao excluir", description: message, variant: "destructive" });
     },
   });
 
@@ -576,8 +610,9 @@ const ReceiptDespesaFixaModal = ({ open, onOpenChange, lancamento, onSaved }: Re
       toast({ title: "Comprovante salvo!" });
       onSaved();
       onOpenChange(false);
-    } catch (err: any) {
-      toast({ title: "Erro", description: err.message, variant: "destructive" });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Erro inesperado";
+      toast({ title: "Erro", description: message, variant: "destructive" });
     } finally {
       setLoading(false);
     }
@@ -673,8 +708,9 @@ const PagarFaturaModal = ({ open, onOpenChange, cartaoId, userId, mes, ano, valo
       qc.invalidateQueries({ queryKey: ["faturas"] });
       toast({ title: "Fatura paga!" });
       onOpenChange(false);
-    } catch (err: any) {
-      toast({ title: "Erro", description: err.message, variant: "destructive" });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Erro inesperado";
+      toast({ title: "Erro", description: message, variant: "destructive" });
     } finally {
       setLoading(false);
     }

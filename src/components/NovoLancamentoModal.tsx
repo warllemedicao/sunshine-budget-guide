@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,6 +17,7 @@ import { ReceiptUploadButton } from '@/components/ReceiptUploadButton';
 import { ReceiptViewer } from '@/components/ReceiptViewer';
 import { useReceipts } from '@/hooks/useReceipts';
 import BrandLogo from '@/components/BrandLogo';
+import { findOrCreateMerchant, uploadMerchantLogoFile } from "@/lib/merchantLogo";
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -46,11 +47,32 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
   const [debouncedLoja, setDebouncedLoja] = useState("");
   const [merchantLogoUrl, setMerchantLogoUrl] = useState<string | null>(null);
   const [merchantId, setMerchantId] = useState<string | null>(null);
+  const [usarReservaReceita, setUsarReservaReceita] = useState(false);
+  const [uploadingManualLogo, setUploadingManualLogo] = useState(false);
   const [cartoes, setCartoes] = useState<Tables<"cartoes">[]>([]);
   const [loading, setLoading] = useState(false);
   // Estados para comprovante
   const [receiptPath, setReceiptPath] = useState<string>('');
   const [receiptFileName, setReceiptFileName] = useState<string>('');
+  const manualLogoInputRef = useRef<HTMLInputElement | null>(null);
+
+  const descricaoHint = useMemo(() => {
+    const value = descricao.trim().toLowerCase();
+    if (!value) return null;
+    if (/plano|internet|telefone|celular|operadora/.test(value)) {
+      return {
+        text: "Referencia detectada: plano/telefonia. Use a loja como operadora (ex: Vivo, Claro, TIM).",
+        category: "servicos",
+      };
+    }
+    if (/lanche|pizza|hamburg|restaurante|delivery/.test(value)) {
+      return {
+        text: "Referencia detectada: alimentacao/delivery. Informe a loja ou app para melhorar o logo.",
+        category: "alimentacao",
+      };
+    }
+    return null;
+  }, [descricao]);
 
   useEffect(() => {
     if (!user || !open) return;
@@ -102,6 +124,7 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
       setLoja(editItem.loja || "");
       setMerchantLogoUrl(editItem.merchant_logo_url || null);
       setMerchantId(editItem.merchant_id || null);
+      setUsarReservaReceita(false);
       setReceiptPath(editItem.comprovante_url ?? '');
       setReceiptFileName(editItem.comprovante_url ? 'Comprovante' : '');
     } else {
@@ -122,15 +145,51 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
     setLoja("");
     setMerchantLogoUrl(null);
     setMerchantId(null);
+    setUsarReservaReceita(false);
     setReceiptPath("");
     setReceiptFileName("");
+  };
+
+  const handleManualLogoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] ?? null;
+    event.target.value = "";
+    if (!file) return;
+    if (!loja.trim()) {
+      toast({
+        title: "Informe a loja antes do upload",
+        description: "Digite o nome da loja para vincular a logo enviada.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setUploadingManualLogo(true);
+    try {
+      const publicUrl = await uploadMerchantLogoFile(loja, file);
+      if (!publicUrl) throw new Error("Nao foi possivel enviar a logo da loja.");
+
+      setMerchantLogoUrl(publicUrl);
+      const merchant = await findOrCreateMerchant(loja, null, publicUrl);
+      if (merchant?.id) setMerchantId(merchant.id);
+
+      toast({ title: "Logo da loja enviada com sucesso!" });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Erro inesperado";
+      toast({ title: "Erro no upload da logo", description: message, variant: "destructive" });
+    } finally {
+      setUploadingManualLogo(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
 
-    if (metodo === "cartao" && !cartaoId) {
+    const isReceita = tipo === "receita";
+    const metodoEfetivo = isReceita ? "avista" : metodo;
+    const fixaEfetiva = isReceita ? false : fixo;
+
+    if (metodoEfetivo === "cartao" && !cartaoId) {
       toast({ title: "Selecione um cartão", description: "É necessário selecionar um cartão para lançamentos no cartão.", variant: "destructive" });
       return;
     }
@@ -140,23 +199,48 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
     try {
       const valorNum = parseFloat(valor);
       if (isNaN(valorNum) || valorNum <= 0) throw new Error("Valor inválido");
+      const valorEfetivo = isReceita ? -valorNum : valorNum;
+
+      if (isReceita && usarReservaReceita) {
+        const { data: reserva, error: reservaError } = await supabase
+          .from("objetivos_globais")
+          .select("id, valor_atual")
+          .eq("user_id", user.id)
+          .eq("tipo", "reserva")
+          .maybeSingle();
+
+        if (reservaError) throw reservaError;
+        if (!reserva) {
+          throw new Error("Reserva financeira nao cadastrada. Crie a reserva em Objetivos.");
+        }
+        if (reserva.valor_atual < valorNum) {
+          throw new Error("Saldo insuficiente na reserva financeira.");
+        }
+
+        const { error: updateReservaError } = await supabase
+          .from("objetivos_globais")
+          .update({ valor_atual: reserva.valor_atual - valorNum })
+          .eq("id", reserva.id);
+        if (updateReservaError) throw updateReservaError;
+        queryClient.invalidateQueries({ queryKey: ["objetivos_globais"] });
+      }
 
       if (editItem) {
         // For card purchases, recalculate the effective invoice date from the user-chosen date.
         let effectiveDataEdit = data;
-        if (metodo === "cartao" && cartaoId) {
+        if (metodoEfetivo === "cartao" && cartaoId) {
           const selectedCartao = cartoes.find((c) => c.id === cartaoId);
           const diaFechamento = selectedCartao?.fechamento ?? 31;
           effectiveDataEdit = getEffectiveInvoiceDate(data, diaFechamento);
         }
 
         const updatePayload: TablesInsert<"lancamentos"> = {
-          descricao, valor: valorNum,
+          descricao, valor: valorEfetivo,
           data: effectiveDataEdit,
           data_compra: data,
-          categoria, fixa: fixo,
-          cartao_id: metodo === "cartao" ? cartaoId || null : null,
-          parcelas: metodo === "cartao" ? parseInt(totalParcelas) : null,
+          categoria, fixa: fixaEfetiva,
+          cartao_id: metodoEfetivo === "cartao" ? cartaoId || null : null,
+          parcelas: metodoEfetivo === "cartao" ? parseInt(totalParcelas) : null,
           loja,
           merchant_id: merchantId || null,
           merchant_logo_url: merchantLogoUrl || null,
@@ -164,7 +248,7 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
         };
         const { error } = await supabase.from("lancamentos").update(updatePayload).eq("id", editItem.id);
         if (error) throw error;
-      } else if (fixo && metodo !== "cartao") {
+      } else if (!isReceita && fixaEfetiva && metodoEfetivo !== "cartao") {
         // Fixed expense: repeat for every remaining month of the year.
         const baseDate = new Date(data + "T00:00:00");
         const endMonth = 11; // December
@@ -172,7 +256,7 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
         for (let m = baseDate.getMonth(); m <= endMonth; m++) {
           const d = new Date(baseDate.getFullYear(), m, baseDate.getDate());
           inserts.push({
-            usuario_id: user.id, descricao, valor: valorNum,
+            usuario_id: user.id, descricao, valor: valorEfetivo,
             data: d.toISOString().split("T")[0],
             data_compra: data,
             categoria, fixa: true,
@@ -183,7 +267,7 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
         }
         const { error } = await supabase.from("lancamentos").insert(inserts);
         if (error) throw error;
-      } else if (metodo === "cartao" && parseInt(totalParcelas) > 1) {
+      } else if (!isReceita && metodoEfetivo === "cartao" && parseInt(totalParcelas) > 1) {
         const numParcelas = parseInt(totalParcelas);
         const valorParcela = +(valorNum / numParcelas).toFixed(2);
 
@@ -214,15 +298,15 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
       } else {
         // For single-installment card purchases, also apply the closing-date rule.
         let effectiveData = data;
-        if (metodo === "cartao" && cartaoId) {
+        if (metodoEfetivo === "cartao" && cartaoId) {
           const selectedCartao = cartoes.find((c) => c.id === cartaoId);
           const diaFechamento = selectedCartao?.fechamento ?? 31;
           effectiveData = getEffectiveInvoiceDate(data, diaFechamento);
         }
         const { error } = await supabase.from("lancamentos").insert({
-          usuario_id: user.id, descricao, valor: valorNum, data: effectiveData,
+          usuario_id: user.id, descricao, valor: valorEfetivo, data: effectiveData,
           data_compra: data,
-          categoria, fixa: fixo, cartao_id: metodo === "cartao" ? cartaoId || null : null, loja,
+          categoria, fixa: fixaEfetiva, cartao_id: metodoEfetivo === "cartao" ? cartaoId || null : null, loja,
           merchant_id: merchantId || null,
           merchant_logo_url: merchantLogoUrl || null,
           comprovante_url: receiptPath || null,
@@ -234,8 +318,9 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
       toast({ title: editItem ? "Lançamento atualizado!" : "Lançamento adicionado!" });
       onOpenChange(false);
       resetForm();
-    } catch (err: any) {
-      toast({ title: "Erro", description: err.message, variant: "destructive" });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Erro inesperado";
+      toast({ title: "Erro", description: message, variant: "destructive" });
     } finally {
       setLoading(false);
     }
@@ -279,6 +364,20 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
           <div className="space-y-2">
             <Label>Descrição</Label>
             <Input value={descricao} onChange={(e) => setDescricao(e.target.value)} required />
+            {descricaoHint && (
+              <div className="rounded-md bg-secondary p-2 text-xs text-muted-foreground">
+                <p>{descricaoHint.text}</p>
+                {descricaoHint.category && categoria !== descricaoHint.category && (
+                  <button
+                    type="button"
+                    className="mt-1 font-medium text-primary hover:underline"
+                    onClick={() => setCategoria(descricaoHint.category)}
+                  >
+                    Aplicar categoria sugerida
+                  </button>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -331,6 +430,16 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
             <Switch checked={fixo} onCheckedChange={setFixo} />
           </div>
 
+          {tipo === "receita" && (
+            <div className="flex items-center justify-between rounded-lg bg-success/10 p-3">
+              <div>
+                <Label>Receita usando reserva financeira</Label>
+                <p className="text-xs text-muted-foreground">Ao salvar, o valor sera abatido da sua reserva.</p>
+              </div>
+              <Switch checked={usarReservaReceita} onCheckedChange={setUsarReservaReceita} />
+            </div>
+          )}
+
           {tipo === "despesa" && (
             <>
               <div className="flex gap-2">
@@ -375,6 +484,22 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
                 />
               )}
             </div>
+            <input
+              ref={manualLogoInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleManualLogoUpload}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={uploadingManualLogo}
+              onClick={() => manualLogoInputRef.current?.click()}
+            >
+              {uploadingManualLogo ? "Enviando logo..." : "Enviar logo da loja"}
+            </Button>
           </div>
 
           {/* SEÇÃO DE COMPROVANTE */}

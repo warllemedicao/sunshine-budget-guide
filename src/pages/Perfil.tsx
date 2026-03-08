@@ -211,8 +211,9 @@ const CartaoModal = ({ open, onOpenChange, editItem, userId }: CartaoModalProps)
       qc.invalidateQueries({ queryKey: ["cartoes"] });
       toast({ title: editItem ? "Cartão atualizado!" : "Cartão adicionado!" });
       onOpenChange(false);
-    } catch (err: any) {
-      toast({ title: "Erro", description: err.message, variant: "destructive" });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Erro inesperado";
+      toast({ title: "Erro", description: message, variant: "destructive" });
     } finally {
       setLoading(false);
     }

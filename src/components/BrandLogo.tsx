@@ -66,6 +66,19 @@ const BrandLogo = ({ store, fallbackIcon, fallbackBg, size = 28, initialUrl, mer
     return rawClientId ? String(rawClientId).replace(/[^a-zA-Z0-9-]/g, "") : null;
   };
 
+  const getPreferredFoodDomain = (storeName: string): string | null => {
+    const normalized = storeName.trim().toLowerCase();
+    const rules: Array<{ pattern: RegExp; domain: string }> = [
+      { pattern: /\bifood\b/, domain: "ifood.com.br" },
+      { pattern: /\b99\s*food\b|\b99food\b|\b99\s*entrega\b/, domain: "99app.com" },
+      { pattern: /\buber\s*eats\b|\bubereats\b/, domain: "ubereats.com" },
+      { pattern: /\brappi\b/, domain: "rappi.com.br" },
+      { pattern: /\baiqfome\b/, domain: "aiqfome.com" },
+    ];
+    const match = rules.find((rule) => rule.pattern.test(normalized));
+    return match?.domain ?? null;
+  };
+
   useEffect(() => {
     // Revoke any previous blob URL before starting a new resolution.
     if (blobUrlRef.current) {
@@ -142,8 +155,9 @@ const BrandLogo = ({ store, fallbackIcon, fallbackBg, size = 28, initialUrl, mer
       }
 
       // ── Step 4: External APIs ──────────────────────────────────────────────
-      // Use Brandfetch Search to resolve the real domain first.
-      const domain = await searchBrandfetchDomain(store);
+      // Prefer known food-delivery domains first, then fallback to Brandfetch search.
+      const preferredDomain = getPreferredFoodDomain(store);
+      const domain = preferredDomain ?? await searchBrandfetchDomain(store);
       if (cancelled) return;
 
       const clientId = getClientId();
