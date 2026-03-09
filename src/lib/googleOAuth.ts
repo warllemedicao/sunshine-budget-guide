@@ -6,19 +6,31 @@ interface GoogleOAuthResult {
   error: Error | null;
 }
 
-export const startGoogleOAuth = async (redirectTo?: string): Promise<GoogleOAuthResult> => {
+interface GoogleOAuthOptions {
+  forceConsent?: boolean;
+}
+
+export const startGoogleOAuth = async (
+  redirectTo?: string,
+  options: GoogleOAuthOptions = {},
+): Promise<GoogleOAuthResult> => {
   const { Capacitor } = await import("@capacitor/core");
   const isNative = Capacitor.isNativePlatform();
+
+  const queryParams: Record<string, string> = {
+    access_type: "offline",
+  };
+
+  if (options.forceConsent) {
+    queryParams.prompt = "consent";
+  }
 
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "google",
     options: {
       redirectTo,
       scopes: GOOGLE_DRIVE_SCOPES,
-      queryParams: {
-        access_type: "offline",
-        prompt: "consent",
-      },
+      queryParams,
       ...(isNative ? { skipBrowserRedirect: true } : {}),
     },
   });

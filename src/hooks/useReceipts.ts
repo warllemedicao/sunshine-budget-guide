@@ -32,7 +32,16 @@ export const useReceipts = () => {
 
     const { data } = await supabase.auth.getSession();
     const latestSession = data.session as { provider_token?: string | null } | null;
-    return latestSession?.provider_token ?? null;
+    if (latestSession?.provider_token) return latestSession.provider_token;
+
+    // On some auth refresh cycles, provider_token can be absent in memory.
+    await supabase.auth.refreshSession().catch(() => {
+      // If refresh fails, caller handles fallback UX.
+    });
+
+    const { data: refreshed } = await supabase.auth.getSession();
+    const refreshedSession = refreshed.session as { provider_token?: string | null } | null;
+    return refreshedSession?.provider_token ?? null;
   }, [session]);
 
   const uploadReceipt = async (file: File, _userId: string): Promise<string | null> => {
