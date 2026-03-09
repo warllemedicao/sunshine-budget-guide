@@ -5,12 +5,13 @@ on:
   push:
     branches:
       - main
-      - copilot/generate-apk-file
 
 jobs:
   build-apk:
     name: Build Debug APK
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout code
