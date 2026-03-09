@@ -25,3 +25,8 @@ dist-ssr
 
 # Lovable
 .lovable
+
+# Local Android toolchain/artifacts
+.android-sdk/
+android/local.properties
+android/.gradle/

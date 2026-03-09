@@ -1,5 +1,16 @@
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
 
+const isGithubDevHost = (hostname: string): boolean =>
+  hostname.endsWith(".github.dev") || hostname.endsWith(".app.github.dev");
+
+const getHostnameFromUrl = (url: string): string | null => {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return null;
+  }
+};
+
 /**
  * Returns the auth redirect URL used by Supabase OAuth/password recovery flows.
  * Priority:
@@ -19,10 +30,29 @@ export const getAuthRedirectUrl = (): string | undefined => {
     : false;
 
   if (isNativeRuntime && nativeConfigured) return nativeConfigured;
-  if (!isNativeRuntime && webConfigured) return webConfigured;
-  if (fallbackConfigured) return fallbackConfigured;
 
   const { hostname, origin } = window.location;
+
+  if (isGithubDevHost(hostname)) {
+    // Codespaces URLs change often; always return the current tab origin.
+    return origin;
+  }
+
+  if (!isNativeRuntime && webConfigured) {
+    const configuredHost = getHostnameFromUrl(webConfigured);
+    // On localhost dev, prefer configured public web URL when available.
+    if (LOCAL_HOSTS.has(hostname)) {
+      return webConfigured;
+    }
+
+    // Ignore stale github.dev URLs committed in env files when already on a github.dev host.
+    if (!configuredHost || !isGithubDevHost(configuredHost) || configuredHost === hostname) {
+      return webConfigured;
+    }
+  }
+
+  if (fallbackConfigured) return fallbackConfigured;
+
   if (LOCAL_HOSTS.has(hostname)) {
     // Avoid returning localhost in native/webview contexts.
     return undefined;

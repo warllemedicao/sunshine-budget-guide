@@ -13,6 +13,7 @@ import { User, CreditCard, Plus, Trash2, Edit2, LogOut, Check, X } from "lucide-
 import type { Tables } from "@/integrations/supabase/types";
 import BrandLogo from "@/components/BrandLogo";
 import { getAuthRedirectUrl } from "@/lib/authRedirect";
+import { startGoogleOAuth } from "@/lib/googleOAuth";
 
 const BANK_SUGGESTIONS = [
   "Nubank",
@@ -28,10 +29,15 @@ const BANK_SUGGESTIONS = [
 ];
 
 const Perfil = () => {
-  const { user, signOut } = useAuth();
+  const { user, session, signOut } = useAuth();
   const { toast } = useToast();
   const qc = useQueryClient();
-  const isGoogleSession = user?.app_metadata?.provider === "google";
+  const providers = Array.isArray(user?.app_metadata?.providers)
+    ? (user?.app_metadata?.providers as string[])
+    : [];
+  const hasGoogleProvider = user?.app_metadata?.provider === "google" || providers.includes("google");
+  const hasGoogleToken = !!(session as { provider_token?: string | null } | null)?.provider_token;
+  const isGoogleSession = hasGoogleProvider || hasGoogleToken;
   const authRedirectUrl = getAuthRedirectUrl();
 
   const { data: profile } = useQuery({
@@ -96,17 +102,7 @@ const Perfil = () => {
   });
 
   const connectGoogle = async () => {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: authRedirectUrl,
-        scopes: "openid email profile https://www.googleapis.com/auth/drive.file",
-        queryParams: {
-          access_type: "offline",
-          prompt: "consent",
-        },
-      },
-    });
+    const { error } = await startGoogleOAuth(authRedirectUrl);
 
     if (error) {
       toast({ title: "Erro ao conectar Google", description: error.message, variant: "destructive" });

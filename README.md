@@ -71,3 +71,10 @@ Yes, you can!
 To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
 
 Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+
+## Google OAuth + Supabase + Capacitor (APK)
+
+Para configurar login Google corretamente em web/tunel e APK Capacitor, use:
+
+- Guia tecnico completo: `docs/OAUTH_CAPACITOR_GOOGLE_SETUP.md`
+- Checklist de validacao: `docs/OAUTH_VALIDATION_CHECKLIST.md`

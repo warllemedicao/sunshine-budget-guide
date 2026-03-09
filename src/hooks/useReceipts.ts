@@ -38,8 +38,12 @@ export const useReceipts = () => {
   const uploadReceipt = async (file: File, _userId: string): Promise<string | null> => {
     setLoading(true);
     try {
-      const provider = user?.app_metadata?.provider;
-      if (provider !== 'google') {
+      const providers = Array.isArray(user?.app_metadata?.providers)
+        ? (user?.app_metadata?.providers as string[])
+        : [];
+      const hasGoogleProvider = user?.app_metadata?.provider === 'google' || providers.includes('google');
+
+      if (!hasGoogleProvider) {
         toast({
           title: 'Google Drive requer login Google',
           description: 'Entre com sua conta Google para enviar comprovantes.',

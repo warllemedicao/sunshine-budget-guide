@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, ReactNode } from "react";
 import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -26,6 +26,47 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [locked, setLocked] = useState(false);
+  const lastHandledNativeUrl = useRef<string | null>(null);
+
+  const handleNativeAuthUrl = async (url: string) => {
+    if (!url || lastHandledNativeUrl.current === url) return;
+    lastHandledNativeUrl.current = url;
+
+    const safeUrl = url.replace("gilfinanceiro://", "https://gilfinanceiro.local/");
+    const parsed = new URL(safeUrl);
+    const hashParams = new URLSearchParams(parsed.hash.startsWith("#") ? parsed.hash.slice(1) : parsed.hash);
+    const queryParams = parsed.searchParams;
+
+    const accessToken = hashParams.get("access_token");
+    const refreshToken = hashParams.get("refresh_token");
+    const code = queryParams.get("code");
+
+    if (accessToken && refreshToken) {
+      const { error } = await supabase.auth.setSession({
+        access_token: accessToken,
+        refresh_token: refreshToken,
+      });
+      const { Browser } = await import("@capacitor/browser");
+      await Browser.close().catch(() => {
+        // Browser may already be closed depending on the OS/webview behavior.
+      });
+      if (error) {
+        console.error("Falha ao aplicar sessao OAuth nativa:", error.message);
+      }
+      return;
+    }
+
+    if (code) {
+      const { error } = await supabase.auth.exchangeCodeForSession(code);
+      const { Browser } = await import("@capacitor/browser");
+      await Browser.close().catch(() => {
+        // Browser may already be closed depending on the OS/webview behavior.
+      });
+      if (error) {
+        console.error("Falha ao trocar code por sessao OAuth:", error.message);
+      }
+    }
+  };
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -50,6 +91,41 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     });
 
     return () => subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    let cleanup: (() => void) | undefined;
+
+    const registerNativeAuthListener = async () => {
+      const [{ Capacitor }, { App }] = await Promise.all([
+        import("@capacitor/core"),
+        import("@capacitor/app"),
+      ]);
+
+      if (!Capacitor.isNativePlatform()) return;
+
+      const listener = await App.addListener("appUrlOpen", async ({ url }) => {
+        await handleNativeAuthUrl(url);
+      });
+
+      const launchUrl = await App.getLaunchUrl();
+      if (launchUrl?.url) {
+        await handleNativeAuthUrl(launchUrl.url);
+      }
+
+      cleanup = () => {
+        void listener.remove();
+      };
+    };
+
+    registerNativeAuthListener().catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("Falha ao registrar listener OAuth nativo:", message);
+    });
+
+    return () => {
+      cleanup?.();
+    };
   }, []);
 
   const unlock = () => {

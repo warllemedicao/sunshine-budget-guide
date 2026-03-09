@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { Wallet } from "lucide-react";
 import { getAuthRedirectUrl } from "@/lib/authRedirect";
+import { startGoogleOAuth } from "@/lib/googleOAuth";
 
 const Auth = () => {
   const [isLogin, setIsLogin] = useState(true);
@@ -54,17 +55,7 @@ const Auth = () => {
   const handleGoogleAuth = async () => {
     setLoading(true);
     try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: {
-          redirectTo: authRedirectUrl,
-          scopes: "openid email profile https://www.googleapis.com/auth/drive.file",
-          queryParams: {
-            access_type: "offline",
-            prompt: "consent",
-          },
-        },
-      });
+      const { error } = await startGoogleOAuth(authRedirectUrl);
       if (error) throw error;
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Erro inesperado";
