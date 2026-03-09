@@ -102,6 +102,7 @@ const Perfil = () => {
   const [revogandoGoogle, setRevogandoGoogle] = useState(false);
   const [whatsappPhone, setWhatsappPhone] = useState("");
   const [salvandoWhatsapp, setSalvandoWhatsapp] = useState(false);
+  const [revogandoWhatsapp, setRevogandoWhatsapp] = useState(false);
   const [showCartaoModal, setShowCartaoModal] = useState(false);
   const [editCartao, setEditCartao] = useState<Tables<"cartoes"> | null>(null);
 
@@ -232,6 +233,24 @@ const Perfil = () => {
     }
   };
 
+  const handleRevogarWhatsapp = async () => {
+    if (!user?.id) return;
+    setRevogandoWhatsapp(true);
+    try {
+      const { error } = await supabase.from("whatsapp_user_links").delete().eq("usuario_id", user.id);
+      if (error) throw error;
+
+      setWhatsappPhone("");
+      qc.invalidateQueries({ queryKey: ["whatsapp-link"] });
+      toast({ title: "Vinculo WhatsApp removido." });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Erro inesperado";
+      toast({ title: "Erro ao revogar WhatsApp", description: message, variant: "destructive" });
+    } finally {
+      setRevogandoWhatsapp(false);
+    }
+  };
+
   return (
     <div className="mx-auto max-w-lg space-y-5 p-4">
       <h1 className="text-xl font-bold">Perfil</h1>
@@ -295,6 +314,7 @@ const Perfil = () => {
                   value={novaSenha}
                   onChange={(e) => setNovaSenha(e.target.value)}
                   placeholder="Nova senha"
+                  autoComplete="new-password"
                 />
               </div>
               <div className="space-y-1">
@@ -304,6 +324,7 @@ const Perfil = () => {
                   value={confirmacaoSenha}
                   onChange={(e) => setConfirmacaoSenha(e.target.value)}
                   placeholder="Repita a nova senha"
+                  autoComplete="new-password"
                 />
               </div>
               <Button type="button" size="sm" variant="outline" onClick={handleSalvarSenha} disabled={salvandoSenha}>
@@ -323,6 +344,20 @@ const Perfil = () => {
                 <Button type="button" size="sm" variant="outline" onClick={handleSalvarWhatsapp} disabled={salvandoWhatsapp}>
                   {salvandoWhatsapp ? "Salvando WhatsApp..." : "Salvar WhatsApp"}
                 </Button>
+                {whatsappLink?.ativo && whatsappLink.phone_e164 && (
+                  <div className="rounded-md bg-success/10 p-2 text-xs text-success space-y-2">
+                    <p>Numero vinculado: {whatsappLink.phone_e164}</p>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={handleRevogarWhatsapp}
+                      disabled={revogandoWhatsapp}
+                    >
+                      {revogandoWhatsapp ? "Revogando..." : "Revogar numero"}
+                    </Button>
+                  </div>
+                )}
                 <p className="text-xs text-muted-foreground">
                   Exemplo de mensagem: "mercado 45,90 hoje alimentacao".
                 </p>

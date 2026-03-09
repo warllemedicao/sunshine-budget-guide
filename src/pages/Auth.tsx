@@ -104,6 +104,7 @@ const Auth = () => {
               onChange={(e) => setPassword(e.target.value)}
               required
               minLength={6}
+              autoComplete={isLogin ? "current-password" : "new-password"}
             />
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? "Aguarde..." : isLogin ? "Entrar" : "Cadastrar"}

@@ -214,6 +214,16 @@ const Dashboard = () => {
 
   const deleteLancamento = useMutation({
     mutationFn: async (l: Tables<"lancamentos">) => {
+      if (l.fixa && l.recorrencia_id && user) {
+        const { error } = await supabase
+          .from("lancamentos")
+          .delete()
+          .eq("usuario_id", user.id)
+          .eq("recorrencia_id", l.recorrencia_id);
+        if (error) throw error;
+        return 999;
+      }
+
       const isInstallment = !!l.parcela_atual && !!l.parcelas && !!l.cartao_id;
       if (isInstallment && user) {
         const baseDescricao = getInstallmentBaseDescription(l.descricao);
@@ -245,7 +255,9 @@ const Dashboard = () => {
     },
     onSuccess: (deletedCount) => {
       qc.invalidateQueries({ queryKey: ["lancamentos"] });
-      if ((deletedCount ?? 1) > 1) {
+      if ((deletedCount ?? 1) === 999) {
+        toast({ title: "Recorrencia fixa removida!" });
+      } else if ((deletedCount ?? 1) > 1) {
         toast({ title: `${deletedCount} parcelas removidas!` });
       } else {
         toast({ title: "Compra removida!" });

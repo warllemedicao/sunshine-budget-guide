@@ -109,6 +109,32 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
     if (error) throw error;
   };
 
+  const updateLancamentosGroupWithReceiptFallback = async (
+    ids: string[],
+    basePayload: TablesInsert<"lancamentos">,
+  ) => {
+    if (ids.length === 0) return;
+
+    if (!receiptPath) {
+      const { error } = await supabase.from("lancamentos").update(basePayload).in("id", ids);
+      if (error) throw error;
+      return;
+    }
+
+    for (const col of RECEIPT_COLUMNS) {
+      const { error } = await supabase.from("lancamentos").update({
+        ...basePayload,
+        [col]: receiptPath,
+      } as never).in("id", ids);
+      if (!error) return;
+      if (isUnknownColumnError(error, col)) continue;
+      throw error;
+    }
+
+    const { error } = await supabase.from("lancamentos").update(basePayload).in("id", ids);
+    if (error) throw error;
+  };
+
   const insertLancamentosWithReceiptFallback = async (
     payload: TablesInsert<"lancamentos"> | TablesInsert<"lancamentos">[],
   ) => {
@@ -272,7 +298,7 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
 
     const isReceita = tipo === "receita";
     const metodoEfetivo = isReceita ? "avista" : metodo;
-    const fixaEfetiva = isReceita ? false : fixo;
+    const fixaEfetiva = fixo;
 
     if (metodoEfetivo === "cartao" && !cartaoId) {
       toast({ title: "Selecione um cartão", description: "É necessário selecionar um cartão para lançamentos no cartão.", variant: "destructive" });
@@ -286,6 +312,10 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
       if (isNaN(valorNum) || valorNum <= 0) throw new Error("Valor inválido");
       const valorEfetivo = valorNum;
       const tipoEfetivo = isReceita ? "receita" : "despesa";
+
+      if (isReceita && fixaEfetiva && usarReservaReceita) {
+        throw new Error("Nao e possivel combinar receita fixa com abatimento de reserva.");
+      }
 
       if (isReceita && usarReservaReceita) {
         const { data: reserva, error: reservaError } = await supabase
@@ -326,27 +356,55 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
           data_compra: data,
           tipo: tipoEfetivo,
           categoria, fixa: fixaEfetiva,
+          recorrencia_id: editItem.recorrencia_id,
           cartao_id: metodoEfetivo === "cartao" ? cartaoId || null : null,
           parcelas: metodoEfetivo === "cartao" ? parseInt(totalParcelas) : null,
           loja,
           merchant_id: merchantId || null,
           merchant_logo_url: merchantLogoUrl || null,
         };
-        await updateLancamentoWithReceiptFallback(editItem.id, updatePayload);
-      } else if (!isReceita && fixaEfetiva && metodoEfetivo !== "cartao") {
-        // Fixed expense: repeat for every remaining month of the year.
+        if (editItem.fixa && editItem.recorrencia_id) {
+          const { data: groupRows, error: groupError } = await supabase
+            .from("lancamentos")
+            .select("id")
+            .eq("usuario_id", user.id)
+            .eq("recorrencia_id", editItem.recorrencia_id);
+          if (groupError) throw groupError;
+
+          const ids = (groupRows ?? []).map((row) => row.id);
+          await updateLancamentosGroupWithReceiptFallback(ids, updatePayload);
+        } else {
+          await updateLancamentoWithReceiptFallback(editItem.id, updatePayload);
+        }
+      } else if (fixaEfetiva) {
+        // Fixed entries: repeat from current month through December.
+        const recorrenciaId = crypto.randomUUID();
         const baseDate = new Date(data + "T00:00:00");
         const endMonth = 11; // December
         const inserts: TablesInsert<"lancamentos">[] = [];
+
+        const selectedCartao = metodoEfetivo === "cartao"
+          ? cartoes.find((c) => c.id === cartaoId)
+          : null;
+        const diaFechamento = selectedCartao?.fechamento ?? 31;
+
         for (let m = baseDate.getMonth(); m <= endMonth; m++) {
-          const d = new Date(baseDate.getFullYear(), m, baseDate.getDate());
+          const compraDate = new Date(baseDate.getFullYear(), m, baseDate.getDate());
+          const compraDateIso = compraDate.toISOString().split("T")[0];
+          const effectiveData = metodoEfetivo === "cartao"
+            ? getEffectiveInvoiceDate(compraDateIso, diaFechamento)
+            : compraDateIso;
+
           inserts.push({
             usuario_id: user.id, descricao, valor: valorEfetivo,
-            data: d.toISOString().split("T")[0],
-            data_compra: data,
-            tipo: "despesa",
-            categoria, fixa: true,
-            cartao_id: null, loja,
+            data: effectiveData,
+            data_compra: compraDateIso,
+            tipo: tipoEfetivo,
+            categoria,
+            fixa: true,
+            recorrencia_id: recorrenciaId,
+            cartao_id: metodoEfetivo === "cartao" ? cartaoId || null : null,
+            loja,
             merchant_id: merchantId || null,
             merchant_logo_url: merchantLogoUrl || null,
           });
@@ -418,12 +476,25 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
   const handleDelete = async () => {
     if (!editItem) return;
     setLoading(true);
-    const { error } = await supabase.from("lancamentos").delete().eq("id", editItem.id);
+    let error = null;
+
+    if (editItem.fixa && editItem.recorrencia_id && user) {
+      const { error: groupDeleteError } = await supabase
+        .from("lancamentos")
+        .delete()
+        .eq("usuario_id", user.id)
+        .eq("recorrencia_id", editItem.recorrencia_id);
+      error = groupDeleteError;
+    } else {
+      const response = await supabase.from("lancamentos").delete().eq("id", editItem.id);
+      error = response.error;
+    }
+
     if (error) {
       toast({ title: "Erro ao excluir", variant: "destructive" });
     } else {
       queryClient.invalidateQueries({ queryKey: ["lancamentos"] });
-      toast({ title: "Excluído!" });
+      toast({ title: editItem.fixa ? "Recorrencia excluida!" : "Excluído!" });
       onOpenChange(false);
     }
     setLoading(false);

@@ -62,6 +62,7 @@ export type Database = {
           ano: number
           valor_total: number
           status: 'pago' | 'pendente'
+          comprovante_url: string | null
           created_at: string
         }
         Insert: {
@@ -72,6 +73,7 @@ export type Database = {
           ano: number
           valor_total?: number
           status?: 'pago' | 'pendente'
+          comprovante_url?: string | null
           created_at?: string
         }
         Update: {
@@ -82,6 +84,7 @@ export type Database = {
           ano?: number
           valor_total?: number
           status?: 'pago' | 'pendente'
+          comprovante_url?: string | null
           created_at?: string
         }
         Relationships: [
@@ -105,9 +108,11 @@ export type Database = {
           tipo: string
           categoria: string
           fixa: boolean
+          recorrencia_id: string | null
           cartao_id: string | null
           parcela_atual: number | null
           parcelas: number | null
+          comprovante_url: string | null
           loja: string | null
           merchant_id: string | null
           merchant_logo_url: string | null
@@ -123,9 +128,11 @@ export type Database = {
           tipo?: string
           categoria?: string
           fixa?: boolean
+          recorrencia_id?: string | null
           cartao_id?: string | null
           parcela_atual?: number | null
           parcelas?: number | null
+          comprovante_url?: string | null
           loja?: string | null
           merchant_id?: string | null
           merchant_logo_url?: string | null
@@ -141,9 +148,11 @@ export type Database = {
           tipo?: string
           categoria?: string
           fixa?: boolean
+          recorrencia_id?: string | null
           cartao_id?: string | null
           parcela_atual?: number | null
           parcelas?: number | null
+          comprovante_url?: string | null
           loja?: string | null
           merchant_id?: string | null
           merchant_logo_url?: string | null
