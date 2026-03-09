@@ -78,3 +78,7 @@ Para configurar login Google corretamente em web/tunel e APK Capacitor, use:
 
 - Guia tecnico completo: `docs/OAUTH_CAPACITOR_GOOGLE_SETUP.md`
 - Checklist de validacao: `docs/OAUTH_VALIDATION_CHECKLIST.md`
+
+## Sincronizacao WhatsApp
+
+- Guia de implementacao e setup: `docs/WHATSAPP_SYNC_SETUP.md`

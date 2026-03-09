@@ -28,6 +28,24 @@ const BANK_SUGGESTIONS = [
   "PagBank",
 ];
 
+const normalizePhoneE164 = (value: string): string | null => {
+  const digitsOnly = value.replace(/\D/g, "");
+  if (!digitsOnly) return null;
+
+  let normalized = digitsOnly;
+  if (normalized.startsWith("00")) {
+    normalized = normalized.slice(2);
+  }
+
+  // Assume Brasil when user enters local mobile/landline with DDD.
+  if (!normalized.startsWith("55") && (normalized.length === 10 || normalized.length === 11)) {
+    normalized = `55${normalized}`;
+  }
+
+  if (normalized.length < 12 || normalized.length > 15) return null;
+  return `+${normalized}`;
+};
+
 const Perfil = () => {
   const { user, session, signOut } = useAuth();
   const { toast } = useToast();
@@ -61,6 +79,20 @@ const Perfil = () => {
     enabled: !!user,
   });
 
+  const { data: whatsappLink } = useQuery({
+    queryKey: ["whatsapp-link", user?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("whatsapp_user_links")
+        .select("usuario_id, phone_e164, ativo")
+        .eq("usuario_id", user!.id)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!user,
+  });
+
   const [editingProfile, setEditingProfile] = useState(false);
   const [nome, setNome] = useState("");
   const [email, setEmail] = useState("");
@@ -68,6 +100,8 @@ const Perfil = () => {
   const [confirmacaoSenha, setConfirmacaoSenha] = useState("");
   const [salvandoSenha, setSalvandoSenha] = useState(false);
   const [revogandoGoogle, setRevogandoGoogle] = useState(false);
+  const [whatsappPhone, setWhatsappPhone] = useState("");
+  const [salvandoWhatsapp, setSalvandoWhatsapp] = useState(false);
   const [showCartaoModal, setShowCartaoModal] = useState(false);
   const [editCartao, setEditCartao] = useState<Tables<"cartoes"> | null>(null);
 
@@ -77,6 +111,12 @@ const Perfil = () => {
       setEmail(profile.email);
     }
   }, [profile]);
+
+  useEffect(() => {
+    if (whatsappLink?.phone_e164) {
+      setWhatsappPhone(whatsappLink.phone_e164);
+    }
+  }, [whatsappLink?.phone_e164]);
 
   const updateProfile = useMutation({
     mutationFn: async () => {
@@ -159,6 +199,39 @@ const Perfil = () => {
     }
   };
 
+  const handleSalvarWhatsapp = async () => {
+    if (!user?.id) return;
+
+    const normalizedPhone = normalizePhoneE164(whatsappPhone);
+    if (!normalizedPhone) {
+      toast({
+        title: "Numero invalido",
+        description: "Use formato com DDI, exemplo: +55 11 99999-0000",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setSalvandoWhatsapp(true);
+    try {
+      const { error } = await supabase.from("whatsapp_user_links").upsert({
+        usuario_id: user.id,
+        phone_e164: normalizedPhone,
+        ativo: true,
+      });
+      if (error) throw error;
+
+      setWhatsappPhone(normalizedPhone);
+      qc.invalidateQueries({ queryKey: ["whatsapp-link"] });
+      toast({ title: "WhatsApp vinculado com sucesso!" });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Erro inesperado";
+      toast({ title: "Erro ao salvar WhatsApp", description: message, variant: "destructive" });
+    } finally {
+      setSalvandoWhatsapp(false);
+    }
+  };
+
   return (
     <div className="mx-auto max-w-lg space-y-5 p-4">
       <h1 className="text-xl font-bold">Perfil</h1>
@@ -236,6 +309,24 @@ const Perfil = () => {
               <Button type="button" size="sm" variant="outline" onClick={handleSalvarSenha} disabled={salvandoSenha}>
                 {salvandoSenha ? "Salvando senha..." : "Salvar senha"}
               </Button>
+
+              <div className="border-t border-border pt-3 space-y-2">
+                <p className="text-sm font-medium">Sincronizacao WhatsApp</p>
+                <p className="text-xs text-muted-foreground">
+                  Salve o numero que enviara mensagens para o bot (ex.: +55 11 99999-0000).
+                </p>
+                <Input
+                  value={whatsappPhone}
+                  onChange={(e) => setWhatsappPhone(e.target.value)}
+                  placeholder="+55 11 99999-0000"
+                />
+                <Button type="button" size="sm" variant="outline" onClick={handleSalvarWhatsapp} disabled={salvandoWhatsapp}>
+                  {salvandoWhatsapp ? "Salvando WhatsApp..." : "Salvar WhatsApp"}
+                </Button>
+                <p className="text-xs text-muted-foreground">
+                  Exemplo de mensagem: "mercado 45,90 hoje alimentacao".
+                </p>
+              </div>
             </div>
           </CardContent>
         )}

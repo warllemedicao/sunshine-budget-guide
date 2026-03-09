@@ -166,6 +166,83 @@ export type Database = {
           },
         ]
       }
+      whatsapp_inbound_logs: {
+        Row: {
+          id: string
+          provider_message_id: string | null
+          phone_e164: string | null
+          text_body: string | null
+          parsed_valor: number | null
+          parsed_categoria: string | null
+          parsed_data: string | null
+          lancamento_id: string | null
+          processing_status: string
+          error_message: string | null
+          raw_payload: Json | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          provider_message_id?: string | null
+          phone_e164?: string | null
+          text_body?: string | null
+          parsed_valor?: number | null
+          parsed_categoria?: string | null
+          parsed_data?: string | null
+          lancamento_id?: string | null
+          processing_status?: string
+          error_message?: string | null
+          raw_payload?: Json | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          provider_message_id?: string | null
+          phone_e164?: string | null
+          text_body?: string | null
+          parsed_valor?: number | null
+          parsed_categoria?: string | null
+          parsed_data?: string | null
+          lancamento_id?: string | null
+          processing_status?: string
+          error_message?: string | null
+          raw_payload?: Json | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_inbound_logs_lancamento_id_fkey"
+            columns: ["lancamento_id"]
+            isOneToOne: false
+            referencedRelation: "lancamentos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      whatsapp_user_links: {
+        Row: {
+          usuario_id: string
+          phone_e164: string
+          ativo: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          usuario_id: string
+          phone_e164: string
+          ativo?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          usuario_id?: string
+          phone_e164?: string
+          ativo?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       merchants: {
         Row: {
           id: string
