@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
@@ -62,7 +61,7 @@ const parseDate = (text: string): string => {
   if (lower.includes("ontem")) return shiftDate(-1);
   if (lower.includes("amanha") || lower.includes("amanhã")) return shiftDate(1);
 
-  const m = lower.match(/(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?/);
+  const m = lower.match(/(\d{1,2})[-/](\d{1,2})(?:[-/](\d{2,4}))?/);
   if (!m) return todayIso();
 
   const day = Number(m[1]);
@@ -79,8 +78,8 @@ const parseDate = (text: string): string => {
 };
 
 const parseAmount = (text: string): number | null => {
-  const withoutDate = text.replace(/\d{1,2}[\/\-]\d{1,2}(?:[\/\-]\d{2,4})?/, " ");
-  const match = withoutDate.match(/\d{1,3}(?:\.\d{3})*(?:,\d{1,2})|\d+(?:[\.,]\d{1,2})?/);
+  const withoutDate = text.replace(/\d{1,2}[-/]\d{1,2}(?:[-/]\d{2,4})?/, " ");
+  const match = withoutDate.match(/\d{1,3}(?:\.\d{3})*(?:,\d{1,2})|\d+(?:[.,]\d{1,2})?/);
   if (!match) return null;
 
   let token = match[0].replace(/\s/g, "");
@@ -115,12 +114,12 @@ const detectDescricaoDespesa = (text: string, loja: string | null): string => {
   const withoutLeadingArticle = actionSlice.replace(/^\s*(?:um|uma|uns|umas|o|a|os|as)\s+/i, "");
 
   let candidate = withoutLeadingArticle
-    .replace(/\b(?:na|no|em)\s+[a-z0-9][a-z0-9\s\-\.]{1,40}/i, " ")
+    .replace(/\b(?:na|no|em)\s+[a-z0-9][a-z0-9\s.-]{1,40}/i, " ")
     .replace(/\b(?:hoje|ontem|amanha|amanhã)\b/gi, " ")
     .replace(/\b(?:valor\s+de|valor|de|por)\b/gi, " ")
     .replace(/\b(?:com|usando)\s+o?\s*cart[aã]o\b.*$/i, " ")
-    .replace(/\d{1,2}[\/\-]\d{1,2}(?:[\/\-]\d{2,4})?/g, " ")
-    .replace(/\d{1,3}(?:\.\d{3})*(?:,\d{1,2})|\d+(?:[\.,]\d{1,2})?/g, " ")
+    .replace(/\d{1,2}[-/]\d{1,2}(?:[-/]\d{2,4})?/g, " ")
+    .replace(/\d{1,3}(?:\.\d{3})*(?:,\d{1,2})|\d+(?:[.,]\d{1,2})?/g, " ")
     .replace(/\b(?:cart[aã]o|cr[eé]dito|fatura)\b/gi, " ")
     .replace(/\s+/g, " ")
     .trim();
@@ -144,11 +143,11 @@ const detectDescricaoReceita = (text: string, loja: string | null): string => {
   )?.[1] ?? lower;
 
   let candidate = actionSlice
-    .replace(/\b(?:na|no|em)\s+[a-z0-9][a-z0-9\s\-\.]{1,40}/i, " ")
+    .replace(/\b(?:na|no|em)\s+[a-z0-9][a-z0-9\s.-]{1,40}/i, " ")
     .replace(/\b(?:hoje|ontem|amanha|amanhã)\b/gi, " ")
     .replace(/\b(?:valor\s+de|valor|de|por)\b/gi, " ")
-    .replace(/\d{1,2}[\/\-]\d{1,2}(?:[\/\-]\d{2,4})?/g, " ")
-    .replace(/\d{1,3}(?:\.\d{3})*(?:,\d{1,2})|\d+(?:[\.,]\d{1,2})?/g, " ")
+    .replace(/\d{1,2}[-/]\d{1,2}(?:[-/]\d{2,4})?/g, " ")
+    .replace(/\d{1,3}(?:\.\d{3})*(?:,\d{1,2})|\d+(?:[.,]\d{1,2})?/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 
@@ -187,7 +186,7 @@ const detectIsCartao = (text: string): boolean => {
 const detectLoja = (text: string): string | null => {
   const lower = text.toLowerCase();
   const m = lower.match(
-    /\b(?:na|no|em)\s+([a-z0-9][a-z0-9\s\-\.]{1,40}?)(?=\s+(?:hoje|ontem|amanha|amanhã|valor|de|por|com|usando|cart[aã]o|cr[eé]dito|fatura)\b|$)/i,
+    /\b(?:na|no|em)\s+([a-z0-9][a-z0-9\s.-]{1,40}?)(?=\s+(?:hoje|ontem|amanha|amanhã|valor|de|por|com|usando|cart[aã]o|cr[eé]dito|fatura)\b|$)/i,
   );
   if (!m?.[1]) return null;
 

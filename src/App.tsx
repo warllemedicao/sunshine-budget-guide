@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { lazy, Suspense } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -9,11 +9,12 @@ import AppLayout from "@/components/AppLayout";
 import AppLockScreen from "@/components/AppLockScreen";
 import SplashScreen from "@/components/SplashScreen";
 import Auth from "@/pages/Auth";
-import Dashboard from "@/pages/Dashboard";
-import Objetivos from "@/pages/Objetivos";
-import Graficos from "@/pages/Graficos";
-import Perfil from "@/pages/Perfil";
 import NotFound from "@/pages/NotFound";
+
+const Dashboard = lazy(() => import("@/pages/Dashboard"));
+const Objetivos = lazy(() => import("@/pages/Objetivos"));
+const Graficos = lazy(() => import("@/pages/Graficos"));
+const Perfil = lazy(() => import("@/pages/Perfil"));
 
 const queryClient = new QueryClient();
 
@@ -46,10 +47,10 @@ const App = () => {
             <Routes>
               <Route path="/auth" element={<PublicRoute><Auth /></PublicRoute>} />
               <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
-                <Route path="/" element={<Dashboard />} />
-                <Route path="/objetivos" element={<Objetivos />} />
-                <Route path="/graficos" element={<Graficos />} />
-                <Route path="/perfil" element={<Perfil />} />
+                <Route path="/" element={<Suspense fallback={<div className="flex items-center justify-center min-h-screen">Carregando...</div>}><Dashboard /></Suspense>} />
+                <Route path="/objetivos" element={<Suspense fallback={<div className="flex items-center justify-center min-h-screen">Carregando...</div>}><Objetivos /></Suspense>} />
+                <Route path="/graficos" element={<Suspense fallback={<div className="flex items-center justify-center min-h-screen">Carregando...</div>}><Graficos /></Suspense>} />
+                <Route path="/perfil" element={<Suspense fallback={<div className="flex items-center justify-center min-h-screen">Carregando...</div>}><Perfil /></Suspense>} />
               </Route>
               <Route path="*" element={<NotFound />} />
             </Routes>

@@ -7,7 +7,7 @@ const AppLayout = () => {
   const [showModal, setShowModal] = useState(false);
 
   return (
-    <div className="min-h-screen bg-background pb-20">
+    <div className="min-h-screen bg-background pb-20 md:pb-0 md:pl-16">
       <Outlet />
       <BottomNav onAddClick={() => setShowModal(true)} />
       <NovoLancamentoModal open={showModal} onOpenChange={setShowModal} />

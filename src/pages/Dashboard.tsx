@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Skeleton } from "@/components/ui/skeleton";
 import MonthSelector from "@/components/MonthSelector";
 import NovoLancamentoModal from "@/components/NovoLancamentoModal";
 import { formatCurrency } from "@/lib/formatters";
@@ -23,6 +24,7 @@ import type { Tables } from "@/integrations/supabase/types";
 import { cn } from "@/lib/utils";
 import { useShareTarget } from "@/hooks/useShareTarget";
 import BrandLogo from "@/components/BrandLogo";
+import Onboarding from "@/components/Onboarding";
 
 const getInstallmentBaseDescription = (descricao: string): string => descricao.replace(/ \(\d+\/\d+\)$/, "");
 
@@ -81,6 +83,7 @@ const Dashboard = () => {
   const [receiptLancamento, setReceiptLancamento] = useState<Tables<"lancamentos"> | null>(null);
   const [receiptRefreshTick, setReceiptRefreshTick] = useState(0);
   const [fixedExpensePaidMap, setFixedExpensePaidMap] = useState<Record<string, boolean>>({});
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
   const { sharedFile, clearSharedFile } = useShareTarget();
   const fixedExpenseStorageKey = `${FIXED_EXPENSE_PAID_KEY}${user?.id ?? "anon"}:${mes + 1}:${ano}`;
@@ -93,6 +96,13 @@ const Dashboard = () => {
       setFixedExpensePaidMap({});
     }
   }, [fixedExpenseStorageKey]);
+
+  useEffect(() => {
+    const hasSeenOnboarding = localStorage.getItem("sunshine-budget-onboarding");
+    if (!hasSeenOnboarding) {
+      setShowOnboarding(true);
+    }
+  }, []);
 
   const toggleFixedExpensePaid = (lancamentoId: string) => {
     setFixedExpensePaidMap((prev) => {
@@ -117,7 +127,7 @@ const Dashboard = () => {
   const startDate = `${ano}-${String(mes + 1).padStart(2, "0")}-01`;
   const endDate = mes === 11 ? `${ano + 1}-01-01` : `${ano}-${String(mes + 2).padStart(2, "0")}-01`;
 
-  const { data: lancamentos = [] } = useQuery({
+  const { data: lancamentos = [], isLoading: lancamentosLoading } = useQuery({
     queryKey: ["lancamentos", user?.id, mes, ano],
     queryFn: async () => {
       const { data, error } = await supabase.from("lancamentos").select("*")
@@ -287,9 +297,30 @@ const Dashboard = () => {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["faturas"] }),
   });
 
+  const closingAlerts = useMemo(() => {
+    const today = new Date();
+    const currentMonth = today.getMonth() + 1;
+    const currentYear = today.getFullYear();
+    const day = today.getDate();
+    return cartoes.filter(c => {
+      if (mes + 1 !== currentMonth || ano !== currentYear) return false;
+      return c.fechamento - day <= 3 && c.fechamento - day >= 0;
+    });
+  }, [cartoes, mes, ano]);
+
   return (
     <div className="mx-auto max-w-lg space-y-5 p-4">
       <MonthSelector mes={mes} ano={ano} onChange={(m, a) => { setMes(m); setAno(a); setExpandedCard(null); }} />
+
+      {closingAlerts.length > 0 && (
+        <Card className="border-warning/50 bg-warning/10">
+          <CardContent className="p-3">
+            <p className="text-sm font-medium text-warning-foreground">
+              ⚠️ Fechamento próximo: {closingAlerts.map(c => c.nome).join(", ")} fecha{mês === 1 ? "" : "m"} no dia {closingAlerts[0].fechamento}.
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Saldo */}
       <Card>
@@ -363,6 +394,12 @@ const Dashboard = () => {
           {cartaoGroups.length === 0 && (
             <p className="text-xs text-muted-foreground">Nenhum cartão</p>
           )}
+          {lancamentosLoading && cartaoGroups.length === 0 && (
+            <div className="space-y-2">
+              <Skeleton className="h-16 w-full rounded-lg" />
+              <Skeleton className="h-16 w-full rounded-lg" />
+            </div>
+          )}
           {cartaoGroups.map(({ cartao, total, pago }) => (
             <button
               key={cartao.id}
@@ -385,6 +422,38 @@ const Dashboard = () => {
                 <span className={cn("text-[10px]", pago ? "text-success" : "text-warning")}>
                   {pago ? "✓ Pago" : "Pendente"}
                 </span>
+                {!pago && total > 0 && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      // Fechar fatura: criar fatura pendente
+                      const mesAtual = mes + 1; // mes is 0-based? Wait, mes is from MonthSelector, probably 0-11
+                      // In MonthSelector, mes is 0-11, ano is year
+                      // But in faturas, mes is 1-12
+                      const mesFatura = mes + 1;
+                      const anoFatura = ano;
+                      supabase.from("faturas").insert({
+                        usuario_id: user!.id,
+                        cartao_id: cartao.id,
+                        mes: mesFatura,
+                        ano: anoFatura,
+                        valor_total: total,
+                        status: "pendente"
+                      }).then(({ error }) => {
+                        if (error) {
+                          toast({ title: "Erro ao fechar fatura", description: error.message, variant: "destructive" });
+                        } else {
+                          qc.invalidateQueries({ queryKey: ["faturas"] });
+                          toast({ title: "Fatura fechada!" });
+                        }
+                      });
+                    }}
+                    className="text-[10px] text-primary hover:underline"
+                    title="Fechar fatura pendente"
+                  >
+                    Fechar
+                  </button>
+                )}
                 {expandedCard === cartao.id ? (
                   <ChevronUp className="h-3 w-3 text-muted-foreground" />
                 ) : (
@@ -604,6 +673,14 @@ const Dashboard = () => {
         faturaExistente={faturas.find((f) => f.cartao_id === pagarCartaoId) ?? null}
         receiptRefreshTick={receiptRefreshTick}
         onReceiptSaved={() => setReceiptRefreshTick((v) => v + 1)}
+      />
+
+      <Onboarding
+        open={showOnboarding}
+        onComplete={() => {
+          setShowOnboarding(false);
+          localStorage.setItem("sunshine-budget-onboarding", "true");
+        }}
       />
 
       {/* Confirmation dialog for installment group deletion */}

@@ -13,7 +13,7 @@ import { addMonths } from "date-fns";
  */
 export function getEffectiveInvoiceDate(purchaseDateStr: string, diaFechamento: number): string {
   const purchaseDate = new Date(purchaseDateStr + "T00:00:00");
-  if (purchaseDate.getDate() > diaFechamento) {
+  if (purchaseDate.getDate() >= diaFechamento) {
     return addMonths(purchaseDate, 1).toISOString().split("T")[0];
   }
   return purchaseDateStr;

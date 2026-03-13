@@ -154,14 +154,21 @@ const GoalCard = ({ title, icon, data, onSave, hideMeta }: GoalCardProps) => {
   })();
 
   return (
-    <Card>
+    <Card className={pct >= 100 ? "ring-2 ring-success" : ""}>
       <CardHeader className="flex flex-row items-center gap-3 pb-2">
         {icon}
         <CardTitle className="text-base">{title}</CardTitle>
-        <button onClick={() => { setEditing(!editing); setAtual(String(data?.valor_atual ?? 0)); setMeta(String(data?.valor_meta ?? 0)); setDataLimite(data?.data_limite ?? ""); }}
-          className="ml-auto p-1 text-muted-foreground hover:text-foreground">
-          {editing ? <X className="h-4 w-4" /> : <Edit2 className="h-4 w-4" />}
-        </button>
+        {pct >= 100 && (
+          <span className="ml-auto px-2 py-1 bg-success text-success-foreground text-xs font-medium rounded-full">
+            🎉 Meta Atingida!
+          </span>
+        )}
+        {!pct >= 100 && (
+          <button onClick={() => { setEditing(!editing); setAtual(String(data?.valor_atual ?? 0)); setMeta(String(data?.valor_meta ?? 0)); setDataLimite(data?.data_limite ?? ""); }}
+            className="ml-auto p-1 text-muted-foreground hover:text-foreground">
+            {editing ? <X className="h-4 w-4" /> : <Edit2 className="h-4 w-4" />}
+          </button>
+        )}
       </CardHeader>
       <CardContent className="space-y-3">
         {editing ? (

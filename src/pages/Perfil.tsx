@@ -9,7 +9,8 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { formatCurrency } from "@/lib/formatters";
-import { User, CreditCard, Plus, Trash2, Edit2, LogOut, Check, X } from "lucide-react";
+import { User, CreditCard, Plus, Trash2, Edit2, LogOut, Check, X, Moon, Sun } from "lucide-react";
+import { useTheme } from "next-themes";
 import type { Tables } from "@/integrations/supabase/types";
 import BrandLogo from "@/components/BrandLogo";
 import { getAuthRedirectUrl } from "@/lib/authRedirect";
@@ -50,6 +51,7 @@ const Perfil = () => {
   const { user, session, signOut } = useAuth();
   const { toast } = useToast();
   const qc = useQueryClient();
+  const { theme, setTheme } = useTheme();
   const providers = Array.isArray(user?.app_metadata?.providers)
     ? (user?.app_metadata?.providers as string[])
     : [];
@@ -365,6 +367,49 @@ const Perfil = () => {
             </div>
           </CardContent>
         )}
+      </Card>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center gap-3 pb-2">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
+            <Sun className="h-5 w-5 text-primary" />
+          </div>
+          <CardTitle className="text-base">Configurações</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium">Tema</p>
+              <p className="text-xs text-muted-foreground">Escolha entre claro, escuro ou automático</p>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant={theme === "light" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setTheme("light")}
+                aria-label="Tema claro"
+              >
+                <Sun className="h-4 w-4" />
+              </Button>
+              <Button
+                variant={theme === "dark" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setTheme("dark")}
+                aria-label="Tema escuro"
+              >
+                <Moon className="h-4 w-4" />
+              </Button>
+              <Button
+                variant={theme === "system" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setTheme("system")}
+                aria-label="Tema do sistema"
+              >
+                <span className="text-xs">Auto</span>
+              </Button>
+            </div>
+          </div>
+        </CardContent>
       </Card>
 
       <Card>
