@@ -74,7 +74,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setLoading(false);
       // Lock the app whenever a new session is detected and the current
       // browser session has not yet been unlocked.
-      if (session && sessionStorage.getItem(UNLOCK_SESSION_KEY) !== "true") {
+      // Skip locking for OAuth sessions (Google, etc.)
+      const isOAuthSession = session?.user?.app_metadata?.provider === 'google' ||
+                            Array.isArray(session?.user?.app_metadata?.providers) &&
+                            session.user.app_metadata.providers.includes('google');
+
+      if (session && !isOAuthSession && sessionStorage.getItem(UNLOCK_SESSION_KEY) !== "true") {
         setLocked(true);
       } else if (!session) {
         setLocked(false);
@@ -85,7 +90,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setLoading(false);
-      if (session && sessionStorage.getItem(UNLOCK_SESSION_KEY) !== "true") {
+      // Skip locking for OAuth sessions (Google, etc.)
+      const isOAuthSession = session?.user?.app_metadata?.provider === 'google' ||
+                            Array.isArray(session?.user?.app_metadata?.providers) &&
+                            session.user.app_metadata.providers.includes('google');
+
+      if (session && !isOAuthSession && sessionStorage.getItem(UNLOCK_SESSION_KEY) !== "true") {
         setLocked(true);
       }
     });
