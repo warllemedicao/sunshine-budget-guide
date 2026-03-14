@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -184,6 +184,9 @@ const GoogleFirstAccessWizard = ({ userId, userEmail, open, onComplete }: Props)
       <DialogContent className="sm:max-w-sm" hideClose>
         <DialogHeader>
           <DialogTitle className="text-center text-base">{current.title}</DialogTitle>
+          <DialogDescription className="text-center text-xs text-muted-foreground">
+            Configuração de segurança no primeiro acesso da conta.
+          </DialogDescription>
         </DialogHeader>
         <div className="py-2">{current.content}</div>
         {/* Step dots */}
