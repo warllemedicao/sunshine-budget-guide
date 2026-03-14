@@ -25,8 +25,16 @@ interface ParsedMessage {
   categoria: string;
   data: string;
   descricao: string;
+  loja: string | null;
   isCartao: boolean;
+  isFixa: boolean;
+  confidence: number;
 }
+
+const stopwords = new Set([
+  "de", "do", "da", "dos", "das", "no", "na", "nos", "nas", "em", "pra", "para", "com", "sem",
+  "valor", "foi", "gastei", "paguei", "comprei", "recebi", "ganhei", "pix", "cartao", "cartão", "credito", "crédito",
+]);
 
 const jsonResponse = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), {
@@ -61,6 +69,18 @@ const parseDate = (text: string): string => {
   if (lower.includes("ontem")) return shiftDate(-1);
   if (lower.includes("anteontem")) return shiftDate(-2);
   if (lower.includes("amanha") || lower.includes("amanhã")) return shiftDate(1);
+
+  const dayOnly = lower.match(/\bdia\s+(\d{1,2})\b/i);
+  if (dayOnly) {
+    const day = Number(dayOnly[1]);
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth();
+    const candidate = new Date(Date.UTC(year, month, day));
+    if (!Number.isNaN(candidate.getTime()) && day >= 1 && day <= 31) {
+      return candidate.toISOString().slice(0, 10);
+    }
+  }
 
   const m = lower.match(/(\d{1,2})[-/](\d{1,2})(?:[-/](\d{2,4}))?/);
   if (!m) return todayIso();
@@ -112,6 +132,8 @@ const detectTipo = (text: string): "despesa" | "receita" => {
 
   if (receitaHints.some((k) => normalizedText.includes(normalize(k)))) return "receita";
   if (despesaHints.some((k) => normalizedText.includes(normalize(k)))) return "despesa";
+  if (/\+\s*\d/.test(normalizedText)) return "receita";
+  if (/\-\s*\d/.test(normalizedText)) return "despesa";
   return "despesa";
 };
 
@@ -123,11 +145,25 @@ const detectCategoria = (text: string): string => {
     return hashCategory;
   }
 
+  let bestCategoria: string = "outros";
+  let bestScore = 0;
   for (const [categoria, keywords] of Object.entries(categoryMap)) {
-    if (keywords.some((k) => lower.includes(normalize(k)))) return categoria;
+    const score = keywords.reduce((acc, k) => acc + (lower.includes(normalize(k)) ? 1 : 0), 0);
+    if (score > bestScore) {
+      bestScore = score;
+      bestCategoria = categoria;
+    }
   }
-  return "outros";
+  return bestCategoria;
 };
+
+const titleCase = (value: string): string =>
+  value
+    .split(" ")
+    .filter(Boolean)
+    .map((token) => token[0]?.toUpperCase() + token.slice(1).toLowerCase())
+    .join(" ")
+    .trim();
 
 const cleanTextForDescription = (text: string): string =>
   text
@@ -200,7 +236,13 @@ const detectDescricao = (text: string, loja: string | null, tipo: "despesa" | "r
 
 const detectIsCartao = (text: string): boolean => {
   const lower = normalize(text);
-  return ["cartao", "credito", "crédito", "fatura"].some((k) => lower.includes(normalize(k)));
+  return ["cartao", "credito", "crédito", "fatura", "visa", "master", "elo", "nubank"].some((k) => lower.includes(normalize(k)));
+};
+
+const detectIsFixa = (text: string): boolean => {
+  const lower = normalize(text);
+  const hints = ["mensal", "todo mes", "todo mês", "fixa", "recorrente", "assinatura"];
+  return hints.some((k) => lower.includes(normalize(k)));
 };
 
 const detectLoja = (text: string): string | null => {
@@ -222,11 +264,15 @@ const detectLoja = (text: string): string | null => {
 const detectFallbackLoja = (text: string): string | null => {
   const cleaned = cleanTextForDescription(text);
   if (!cleaned) return null;
-  const parts = cleaned.split(" ").filter(Boolean);
+  const parts = cleaned
+    .split(" ")
+    .map((p) => p.trim())
+    .filter((p) => p && !stopwords.has(normalize(p)));
   if (!parts.length) return null;
   const maybeStore = parts.slice(0, 3).join(" ").trim();
   if (!maybeStore) return null;
-  return maybeStore.length > 60 ? maybeStore.slice(0, 60) : maybeStore;
+  const clipped = maybeStore.length > 60 ? maybeStore.slice(0, 60) : maybeStore;
+  return titleCase(clipped);
 };
 
 const detectCardId = async (usuarioId: string, text: string): Promise<string | null> => {
@@ -257,15 +303,30 @@ const detectCardId = async (usuarioId: string, text: string): Promise<string | n
 
 const parseMessage = (text: string): ParsedMessage => {
   const valor = parseAmount(text);
-  const loja = detectLoja(text);
+  const lojaRaw = detectLoja(text) ?? detectFallbackLoja(text);
+  const loja = lojaRaw ? titleCase(lojaRaw) : null;
   const tipo = detectTipo(text);
+  const categoria = detectCategoria(text);
+  const isCartao = detectIsCartao(text);
+  const isFixa = detectIsFixa(text);
+
+  let confidence = 0.45;
+  if (valor && valor > 0) confidence += 0.2;
+  if (categoria !== "outros") confidence += 0.15;
+  if (loja) confidence += 0.1;
+  if (isCartao) confidence += 0.05;
+  if (isFixa) confidence += 0.05;
+
   return {
     valor,
     tipo,
-    categoria: detectCategoria(text),
+    categoria,
     data: parseDate(text),
     descricao: detectDescricao(text, loja, tipo),
-    isCartao: detectIsCartao(text),
+    loja,
+    isCartao,
+    isFixa,
+    confidence: Math.min(0.99, confidence),
   };
 };
 
@@ -367,8 +428,6 @@ Deno.serve(async (req: Request) => {
         ? await detectCardId(linkedUser.usuario_id, textBody)
         : null;
 
-      const lojaDetectada = detectLoja(textBody) ?? detectFallbackLoja(textBody);
-
       const { data: lancamento, error: insertError } = await supabase
         .from("lancamentos")
         .insert({
@@ -379,9 +438,9 @@ Deno.serve(async (req: Request) => {
           data_compra: parsed.data,
           tipo: parsed.tipo,
           categoria: parsed.categoria,
-          fixa: false,
+          fixa: parsed.isFixa,
           cartao_id: cardId,
-          loja: lojaDetectada ?? parsed.descricao,
+          loja: parsed.loja ?? parsed.descricao,
         })
         .select("id")
         .single();
@@ -420,7 +479,7 @@ Deno.serve(async (req: Request) => {
 
       await sendWhatsAppText(
         fromRaw ?? "",
-        `Lançamento criado: ${parsed.tipo} de R$ ${parsed.valor.toFixed(2).replace(".", ",")} em ${parsed.categoria}${cardId ? " no cartão" : ""}, data ${parsed.data.split("-").reverse().join("/")}.`,
+        `Lançamento criado: ${parsed.tipo} de R$ ${parsed.valor.toFixed(2).replace(".", ",")} em ${parsed.categoria}${cardId ? " no cartão" : ""}${parsed.isFixa ? " (fixa)" : ""}, data ${parsed.data.split("-").reverse().join("/")}.${parsed.confidence < 0.65 ? " Se algo ficou errado, edite no app em Início." : ""}`,
       );
     }
 
