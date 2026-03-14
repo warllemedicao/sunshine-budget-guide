@@ -582,6 +582,12 @@ const Perfil = () => {
                   checked={featureSettings.excludeFixedCardFromTotals}
                   onCheckedChange={(v) => toggleFeatureSetting("excludeFixedCardFromTotals", v)}
                 />
+                <SettingToggleRow
+                  title="Visualização compacta de cartões"
+                  description="Exibe cada cartão em uma linha única e menor, ideal para quem tem vários cartões."
+                  checked={featureSettings.compactCardView}
+                  onCheckedChange={(v) => toggleFeatureSetting("compactCardView", v)}
+                />
               </AccordionContent>
             </AccordionItem>
 

@@ -45,6 +45,7 @@ export type UserFeatureSettings = {
   showConnectedServicesCard: boolean;
   showProfileTips: boolean;
   enableExperimentalFeatures: boolean;
+  compactCardView: boolean;
 };
 
 export const DEFAULT_USER_FEATURE_SETTINGS: UserFeatureSettings = {
@@ -94,6 +95,7 @@ export const DEFAULT_USER_FEATURE_SETTINGS: UserFeatureSettings = {
   showConnectedServicesCard: true,
   showProfileTips: true,
   enableExperimentalFeatures: false,
+  compactCardView: false,
 };
 
 export const getSettingsStorageKey = (userId: string) => `sunshine:settings:${userId}`;

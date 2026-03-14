@@ -18,6 +18,18 @@ const Objetivos = () => {
   const [featureSettings, setFeatureSettings] = useState(DEFAULT_USER_FEATURE_SETTINGS);
   const [searchTerm, setSearchTerm] = useState("");
 
+  // Date range for last 3 months (for AutoCalc)
+  const autoCalcRange = useMemo(() => {
+    const now = new Date();
+    const end = new Date(now.getFullYear(), now.getMonth(), 1); // start of current month
+    const start = new Date(end);
+    start.setMonth(start.getMonth() - 3);
+    return {
+      from: start.toISOString().slice(0, 10),
+      to: end.toISOString().slice(0, 10),
+    };
+  }, []);
+
   useEffect(() => {
     if (!user?.id) {
       setFeatureSettings(DEFAULT_USER_FEATURE_SETTINGS);
@@ -39,6 +51,40 @@ const Objetivos = () => {
     },
     enabled: !!user,
   });
+
+  const { data: historico = [] } = useQuery({
+    queryKey: ["lancamentos_historico_autoCalc", user?.id, autoCalcRange.from, autoCalcRange.to],
+    queryFn: async () => {
+      try {
+        const { data, error } = await supabase
+          .from("lancamentos")
+          .select("valor,tipo,data")
+          .eq("usuario_id", user!.id)
+          .gte("data", autoCalcRange.from)
+          .lt("data", autoCalcRange.to);
+        if (error) return [];
+        return data ?? [];
+      } catch {
+        return [];
+      }
+    },
+    enabled: !!user && featureSettings.enableObjetivosAutoCalc,
+  });
+
+  // Average monthly surplus from last 3 months
+  const avgMonthlySurplus = useMemo(() => {
+    if (!featureSettings.enableObjetivosAutoCalc || historico.length === 0) return null;
+    let totalReceita = 0;
+    let totalDespesa = 0;
+    for (const l of historico) {
+      const tipo = (l.tipo ?? "").toString().trim().toLowerCase();
+      const isReceita = tipo === "receita" || tipo === "entrada";
+      if (isReceita) totalReceita += Math.abs(l.valor);
+      else totalDespesa += Math.abs(l.valor);
+    }
+    const surplus = (totalReceita - totalDespesa) / 3;
+    return surplus > 0 ? +surplus.toFixed(2) : 0;
+  }, [historico, featureSettings.enableObjetivosAutoCalc]);
 
   const { data: lista = [] } = useQuery({
     queryKey: ["objetivos_lista", user?.id],
@@ -163,6 +209,8 @@ const Objetivos = () => {
         highlightCompleted={featureSettings.enableObjetivosHighlightCompleted}
         enableQuickActions={featureSettings.enableObjetivosQuickActions}
         enableTimeline={featureSettings.enableObjetivosTimeline}
+        enableAutoCalc={featureSettings.enableObjetivosAutoCalc}
+        avgMonthlySurplus={avgMonthlySurplus}
       />
 
       {/* Reserva */}
@@ -176,6 +224,8 @@ const Objetivos = () => {
         highlightCompleted={featureSettings.enableObjetivosHighlightCompleted}
         enableQuickActions={featureSettings.enableObjetivosQuickActions}
         enableTimeline={featureSettings.enableObjetivosTimeline}
+        enableAutoCalc={featureSettings.enableObjetivosAutoCalc}
+        avgMonthlySurplus={avgMonthlySurplus}
       />
 
       {/* Obras */}
@@ -218,9 +268,11 @@ interface GoalCardProps {
   highlightCompleted?: boolean;
   enableQuickActions?: boolean;
   enableTimeline?: boolean;
+  enableAutoCalc?: boolean;
+  avgMonthlySurplus?: number | null;
 }
 
-const GoalCard = ({ title, icon, data, onSave, hideMeta, onDelete, showProjection, highlightCompleted, enableQuickActions, enableTimeline }: GoalCardProps) => {
+const GoalCard = ({ title, icon, data, onSave, hideMeta, onDelete, showProjection, highlightCompleted, enableQuickActions, enableTimeline, enableAutoCalc, avgMonthlySurplus }: GoalCardProps) => {
   const [editing, setEditing] = useState(false);
   const [atual, setAtual] = useState(String(data?.valor_atual ?? 0));
   const [meta, setMeta] = useState(String(data?.valor_meta ?? 0));
@@ -309,6 +361,27 @@ const GoalCard = ({ title, icon, data, onSave, hideMeta, onDelete, showProjectio
               <p className="text-xs text-muted-foreground">
                 {diasRestantes >= 0 ? `${diasRestantes} dia(s) restantes até o prazo` : "Prazo expirado"}
               </p>
+            )}
+            {enableAutoCalc && avgMonthlySurplus !== null && avgMonthlySurplus !== undefined && (
+              <div className="rounded-md bg-primary/5 border border-primary/20 px-3 py-2">
+                <p className="text-[11px] font-medium text-primary">💡 AutoCalc — últimos 3 meses</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Excedente médio mensal:{" "}
+                  <span className={avgMonthlySurplus > 0 ? "text-success font-semibold" : "text-destructive font-semibold"}>
+                    {formatCurrency(avgMonthlySurplus)}
+                  </span>
+                  {avgMonthlySurplus > 0 && mesesRestantes !== null && !hideMeta && (
+                    <>
+                      {" · "}
+                      {avgMonthlySurplus >= mesesRestantes ? (
+                        <span className="text-success">no ritmo certo ✓</span>
+                      ) : (
+                        <span className="text-warning">abaixo do necessário ({formatCurrency(mesesRestantes)}/mês)</span>
+                      )}
+                    </>
+                  )}
+                </p>
+              </div>
             )}
           </>
         )}

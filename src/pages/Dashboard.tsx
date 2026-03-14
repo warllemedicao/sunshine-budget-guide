@@ -26,6 +26,7 @@ import { cn } from "@/lib/utils";
 import { useShareTarget } from "@/hooks/useShareTarget";
 import BrandLogo from "@/components/BrandLogo";
 import Onboarding from "@/components/Onboarding";
+import GoogleFirstAccessWizard, { hasCompletedGoogleWizard } from "@/components/GoogleFirstAccessWizard";
 import { DEFAULT_USER_FEATURE_SETTINGS, readSettingsFromStorage } from "@/lib/userSettings";
 
 const getInstallmentBaseDescription = (descricao: string): string => descricao.replace(/ \(\d+\/\d+\)$/, "");
@@ -86,6 +87,7 @@ const Dashboard = () => {
   const [receiptRefreshTick, setReceiptRefreshTick] = useState(0);
   const [fixedExpensePaidMap, setFixedExpensePaidMap] = useState<Record<string, boolean>>({});
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showGoogleWizard, setShowGoogleWizard] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [quickFilter, setQuickFilter] = useState<"all" | "com-anexo" | "sem-anexo" | "fixas" | "variaveis">("all");
   const [advancedCategory, setAdvancedCategory] = useState<string>("all");
@@ -110,6 +112,16 @@ const Dashboard = () => {
       setShowOnboarding(true);
     }
   }, []);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    const isGoogleUser =
+      user.app_metadata?.provider === "google" ||
+      (Array.isArray(user.app_metadata?.providers) && user.app_metadata.providers.includes("google"));
+    if (isGoogleUser && !hasCompletedGoogleWizard(user.id)) {
+      setShowGoogleWizard(true);
+    }
+  }, [user?.id]);
 
   useEffect(() => {
     if (!user?.id) {
@@ -729,6 +741,36 @@ const Dashboard = () => {
           </div>
         )}
         {cartaoGroups.map(({ cartao, total, pago }) => (
+          featureSettings.compactCardView ? (
+            /* Compact single-row card */
+            <button
+              key={cartao.id}
+              onClick={() => setExpandedCard(expandedCard === cartao.id ? null : cartao.id)}
+              className="w-full flex items-center gap-2 rounded-lg bg-card border border-border px-2 py-1.5 text-left hover:shadow-sm transition-shadow"
+            >
+              <BrandLogo
+                store={cartao.nome}
+                initialUrl={cartao.logo_url}
+                merchantId={cartao.merchant_id}
+                size={18}
+                fallbackIcon={<CreditCard className="h-3 w-3 text-primary" />}
+                fallbackBg="hsl(var(--primary) / 0.1)"
+              />
+              <p className="text-xs font-medium flex-1 truncate">{cartao.nome}</p>
+              <p className="text-xs font-semibold">{formatCurrency(total)}</p>
+              <span className={cn(
+                "text-[10px] px-1.5 py-0.5 rounded-full font-medium flex-shrink-0",
+                pago ? "bg-success/10 text-success" : "bg-warning/10 text-warning"
+              )}>
+                {pago ? "✓" : "⏳"}
+              </span>
+              {expandedCard === cartao.id ? (
+                <ChevronUp className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+              ) : (
+                <ChevronDown className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+              )}
+            </button>
+          ) : (
           <button
             key={cartao.id}
             onClick={() => setExpandedCard(expandedCard === cartao.id ? null : cartao.id)}
@@ -786,6 +828,7 @@ const Dashboard = () => {
               )}
             </div>
           </button>
+          )
         ))}
       </div>
 
@@ -1047,6 +1090,15 @@ const Dashboard = () => {
           localStorage.setItem("sunshine-budget-onboarding", "true");
         }}
       />
+
+      {user && (
+        <GoogleFirstAccessWizard
+          userId={user.id}
+          userEmail={user.email ?? ""}
+          open={showGoogleWizard}
+          onComplete={() => setShowGoogleWizard(false)}
+        />
+      )}
 
       {/* Confirmation dialog for installment group deletion */}
     </div>
