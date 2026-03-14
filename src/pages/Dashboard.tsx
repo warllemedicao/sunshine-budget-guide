@@ -14,6 +14,7 @@ import NovoLancamentoModal from "@/components/NovoLancamentoModal";
 import { formatCurrency } from "@/lib/formatters";
 import { getCategoriaInfo } from "@/lib/categories";
 import { useToast } from "@/hooks/use-toast";
+import { ToastAction } from "@/components/ui/toast";
 import {
   TrendingUp, TrendingDown, CreditCard, ShoppingBag,
   ChevronDown, ChevronUp, Plus, Trash2, Edit2, Check, Undo2, Paperclip,
@@ -87,6 +88,8 @@ const Dashboard = () => {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [quickFilter, setQuickFilter] = useState<"all" | "com-anexo" | "sem-anexo" | "fixas" | "variaveis">("all");
+  const [advancedCategory, setAdvancedCategory] = useState<string>("all");
+  const [advancedScope, setAdvancedScope] = useState<"all" | "receitas" | "despesas">("all");
   const [featureSettings, setFeatureSettings] = useState(DEFAULT_USER_FEATURE_SETTINGS);
 
   const { sharedFile, clearSharedFile } = useShareTarget();
@@ -257,13 +260,18 @@ const Dashboard = () => {
   const deleteLancamento = useMutation({
     mutationFn: async (l: Tables<"lancamentos">) => {
       if (l.fixa && l.recorrencia_id && user) {
+        const { data: backupRows } = await supabase
+          .from("lancamentos")
+          .select("*")
+          .eq("usuario_id", user.id)
+          .eq("recorrencia_id", l.recorrencia_id);
         const { error } = await supabase
           .from("lancamentos")
           .delete()
           .eq("usuario_id", user.id)
           .eq("recorrencia_id", l.recorrencia_id);
         if (error) throw error;
-        return 999;
+        return { deletedCount: 999, backupRows: backupRows ?? [] };
       }
 
       const isInstallment = !!l.parcela_atual && !!l.parcelas && !!l.cartao_id;
@@ -285,24 +293,46 @@ const Dashboard = () => {
           .map((item) => item.id);
 
         if (ids.length > 1) {
+          const { data: backupRows } = await supabase.from("lancamentos").select("*").in("id", ids);
           const { error: deleteGroupError } = await supabase.from("lancamentos").delete().in("id", ids);
           if (deleteGroupError) throw deleteGroupError;
-          return ids.length;
+          return { deletedCount: ids.length, backupRows: backupRows ?? [] };
         }
       }
 
       const { error } = await supabase.from("lancamentos").delete().eq("id", l.id);
       if (error) throw error;
-      return 1;
+      return { deletedCount: 1, backupRows: [l] };
     },
-    onSuccess: (deletedCount) => {
+    onSuccess: ({ deletedCount, backupRows }) => {
       qc.invalidateQueries({ queryKey: ["lancamentos"] });
       if ((deletedCount ?? 1) === 999) {
         toast({ title: "Recorrencia fixa removida!" });
       } else if ((deletedCount ?? 1) > 1) {
         toast({ title: `${deletedCount} parcelas removidas!` });
       } else {
-        toast({ title: "Compra removida!" });
+        if (featureSettings.enableUndoAfterActions && backupRows.length === 1) {
+          toast({
+            title: "Compra removida!",
+            description: "Você pode desfazer esta ação.",
+            action: (
+              <ToastAction
+                altText="Desfazer"
+                onClick={async () => {
+                  const { error } = await supabase.from("lancamentos").insert(backupRows[0] as never);
+                  if (!error) {
+                    qc.invalidateQueries({ queryKey: ["lancamentos"] });
+                    toast({ title: "Exclusão desfeita!" });
+                  }
+                }}
+              >
+                Desfazer
+              </ToastAction>
+            ),
+          });
+        } else {
+          toast({ title: "Compra removida!" });
+        }
       }
     },
     onError: (err: unknown) => {
@@ -340,6 +370,51 @@ const Dashboard = () => {
     });
   }, [cartoes, mes, ano]);
 
+  const dueAlerts = useMemo(() => {
+    const today = new Date();
+    const currentMonth = today.getMonth() + 1;
+    const currentYear = today.getFullYear();
+    const day = today.getDate();
+    return cartoes.filter(c => {
+      if (mes + 1 !== currentMonth || ano !== currentYear) return false;
+      return c.vencimento - day <= 3 && c.vencimento - day >= 0;
+    });
+  }, [cartoes, mes, ano]);
+
+  const anomalyCount = useMemo(() => {
+    const despesas = lancamentos.filter((l) => {
+      const t = (l.tipo ?? "").toLowerCase();
+      return t === "despesa" || t === "saida" || (t !== "receita" && t !== "entrada" && l.valor >= 0);
+    });
+    if (despesas.length < 3) return 0;
+    const media = despesas.reduce((s, l) => s + Math.abs(l.valor), 0) / despesas.length;
+    return despesas.filter((l) => Math.abs(l.valor) > media * 2).length;
+  }, [lancamentos]);
+
+  const missingReceiptCount = useMemo(
+    () => lancamentos.filter((l) => {
+      const t = (l.tipo ?? "").toLowerCase();
+      const isDespesa = t === "despesa" || t === "saida" || (t !== "receita" && t !== "entrada" && l.valor >= 0);
+      return isDespesa && !hasReceipt(l);
+    }).length,
+    [lancamentos],
+  );
+
+  const subscriptionHintCount = useMemo(
+    () => lancamentos.filter((l) => l.fixa && ((l.tipo ?? "").toLowerCase() === "despesa" || (l.tipo ?? "").toLowerCase() === "saida")).length,
+    [lancamentos],
+  );
+
+  const pendingImportCount = useMemo(() => {
+    if (!user?.id) return 0;
+    try {
+      const raw = localStorage.getItem(`sunshine:import:pending:${user.id}`);
+      return raw ? Number(raw) || 0 : 0;
+    } catch {
+      return 0;
+    }
+  }, [user?.id]);
+
   const hasReceipt = (l: Tables<"lancamentos">) => !!getDbComprovanteUrl(l) || !!getLocalReceipt(`${LANCAMENTO_RECEIPT_KEY}${l.id}`);
 
   const applyDisplayFilters = (items: Tables<"lancamentos">[]) => {
@@ -355,6 +430,14 @@ const Dashboard = () => {
       if (quickFilter === "sem-anexo") return !hasReceipt(item);
       if (quickFilter === "fixas") return !!item.fixa;
       if (quickFilter === "variaveis") return !item.fixa;
+
+      if (featureSettings.enableAdvancedFilters) {
+        if (advancedCategory !== "all" && item.categoria !== advancedCategory) return false;
+        const rawTipo = (item.tipo ?? "").toString().trim().toLowerCase();
+        const isReceita = rawTipo === "receita" || rawTipo === "entrada" || (rawTipo !== "despesa" && rawTipo !== "saida" && item.valor < 0);
+        if (advancedScope === "receitas" && !isReceita) return false;
+        if (advancedScope === "despesas" && isReceita) return false;
+      }
       return true;
     });
   };
@@ -375,6 +458,48 @@ const Dashboard = () => {
             <p className="text-sm font-medium text-warning-foreground">
               ⚠️ Fechamento próximo: {closingAlerts.map(c => c.nome).join(", ")} fecha{closingAlerts.length === 1 ? "" : "m"} no dia {closingAlerts[0].fechamento}.
             </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {featureSettings.notifyCardDue && dueAlerts.length > 0 && (
+        <Card className="border-primary/40 bg-primary/10">
+          <CardContent className="p-3">
+            <p className="text-sm font-medium text-primary">
+              📅 Vencimento próximo: {dueAlerts.map(c => c.nome).join(", ")} vence{dueAlerts.length === 1 ? "" : "m"} em breve.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {featureSettings.notifyAnomalies && anomalyCount > 0 && (
+        <Card className="border-warning/50 bg-warning/10">
+          <CardContent className="p-3">
+            <p className="text-sm font-medium text-warning-foreground">⚠️ {anomalyCount} gasto(s) fora do padrão detectado(s).</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {featureSettings.notifyMissingReceipt && missingReceiptCount > 0 && (
+        <Card className="border-accent/60 bg-accent/10">
+          <CardContent className="p-3">
+            <p className="text-sm font-medium">📎 {missingReceiptCount} despesa(s) sem comprovante.</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {featureSettings.notifySubscriptionCharges && subscriptionHintCount > 0 && (
+        <Card className="border-secondary bg-secondary/60">
+          <CardContent className="p-3">
+            <p className="text-sm font-medium">🔁 {subscriptionHintCount} despesa(s) fixas podem ser assinaturas recorrentes.</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {featureSettings.notifyImportPendingReview && pendingImportCount > 0 && (
+        <Card className="border-primary/50 bg-primary/10">
+          <CardContent className="p-3">
+            <p className="text-sm font-medium text-primary">🗂️ {pendingImportCount} item(ns) importado(s) aguardam revisão.</p>
           </CardContent>
         </Card>
       )}
@@ -431,6 +556,113 @@ const Dashboard = () => {
                 ))}
               </div>
             )}
+          </CardContent>
+        </Card>
+      )}
+
+      {featureSettings.enableAdvancedFilters && (
+        <Card>
+          <CardContent className="p-3 grid grid-cols-2 gap-2">
+            <Input
+              value={advancedCategory}
+              onChange={(e) => setAdvancedCategory(e.target.value || "all")}
+              placeholder="Categoria (ou all)"
+            />
+            <div className="flex gap-1">
+              {[
+                { key: "all", label: "Tudo" },
+                { key: "receitas", label: "Receitas" },
+                { key: "despesas", label: "Despesas" },
+              ].map((scope) => (
+                <button
+                  key={scope.key}
+                  onClick={() => setAdvancedScope(scope.key as typeof advancedScope)}
+                  className={cn(
+                    "rounded-md border px-2 py-1 text-[10px]",
+                    advancedScope === scope.key ? "border-primary text-primary" : "border-border text-muted-foreground",
+                  )}
+                >
+                  {scope.label}
+                </button>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {featureSettings.enableDashboardInsights && (
+        <Card>
+          <CardContent className="p-3 space-y-1">
+            <p className="text-xs font-semibold uppercase text-muted-foreground">Insights</p>
+            <p className="text-sm">Maior gasto do mês: {stats.variaveis.concat(stats.fixasDespesa).length > 0 ? formatCurrency(Math.max(...stats.variaveis.concat(stats.fixasDespesa).map((l) => l.valor))) : formatCurrency(0)}</p>
+            <p className="text-xs text-muted-foreground">Entradas: {stats.fixasReceita.length + stats.variaveisReceita.length} · Saídas: {stats.fixasDespesa.length + stats.variaveis.length + stats.cartaoLanc.length}</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {featureSettings.enableCashflowHighlights && (
+        <Card>
+          <CardContent className="p-3">
+            <p className="text-xs font-semibold uppercase text-muted-foreground">Fluxo de Caixa</p>
+            <p className={cn("text-sm font-medium", saldo >= 0 ? "text-success" : "text-destructive")}>
+              Projeção do mês: {formatCurrency(saldo)}
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {(featureSettings.enableImportCenter || featureSettings.enableExperimentalFeatures) && (
+        <Card>
+          <CardContent className="p-3 space-y-2">
+            <p className="text-xs font-semibold uppercase text-muted-foreground">Central de Importação</p>
+            <div className="flex flex-wrap gap-1.5 text-[10px]">
+              {featureSettings.enableCsvImport && <span className="rounded-full border px-2 py-1">CSV</span>}
+              {featureSettings.enableOfxImport && <span className="rounded-full border px-2 py-1">OFX</span>}
+              {featureSettings.enableImportReconciliation && <span className="rounded-full border px-2 py-1">Conciliação</span>}
+              {featureSettings.enableExperimentalFeatures && <span className="rounded-full border px-2 py-1">Experimental</span>}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {featureSettings.enableBatchActionsInicio && (variaveisView.length > 0 || orfaosView.length > 0) && (
+        <Card>
+          <CardContent className="p-3 space-y-2">
+            <p className="text-xs font-semibold uppercase text-muted-foreground">Ações em lote</p>
+            <div className="flex gap-2">
+              {variaveisView.length > 0 && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={async () => {
+                    const ids = variaveisView.map((l) => l.id);
+                    const { error } = await supabase.from("lancamentos").delete().in("id", ids);
+                    if (!error) {
+                      qc.invalidateQueries({ queryKey: ["lancamentos"] });
+                      toast({ title: `${ids.length} lançamento(s) variável(is) removido(s)!` });
+                    }
+                  }}
+                >
+                  Excluir variáveis filtradas
+                </Button>
+              )}
+              {orfaosView.length > 0 && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={async () => {
+                    const ids = orfaosView.map((l) => l.id);
+                    const { error } = await supabase.from("lancamentos").delete().in("id", ids);
+                    if (!error) {
+                      qc.invalidateQueries({ queryKey: ["lancamentos"] });
+                      toast({ title: `${ids.length} órfão(s) removido(s)!` });
+                    }
+                  }}
+                >
+                  Excluir órfãos filtrados
+                </Button>
+              )}
+            </div>
           </CardContent>
         </Card>
       )}
@@ -746,7 +978,7 @@ const Dashboard = () => {
       )}
 
       {/* Despesas órfãs — card expenses with no valid card (ghost expenses) */}
-      {orfaosView.length > 0 && (
+      {featureSettings.notifyOrphanTransactions && orfaosView.length > 0 && (
         <div className="rounded-lg border border-destructive/50 bg-destructive/5 p-3 space-y-2">
           <div className="flex items-center gap-2">
             <span className="text-destructive">⚠️</span>

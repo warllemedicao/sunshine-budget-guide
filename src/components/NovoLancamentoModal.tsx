@@ -19,6 +19,7 @@ import { useReceipts } from '@/hooks/useReceipts';
 import BrandLogo from '@/components/BrandLogo';
 import { findOrCreateMerchant, uploadMerchantLogoFile } from "@/lib/merchantLogo";
 import { DEFAULT_USER_FEATURE_SETTINGS, readSettingsFromStorage } from "@/lib/userSettings";
+import { ToastAction } from "@/components/ui/toast";
 
 type SupabaseLikeError = {
   message?: string;
@@ -79,6 +80,9 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
   const [cartoes, setCartoes] = useState<Tables<"cartoes">[]>([]);
   const [loading, setLoading] = useState(false);
   const [featureSettings, setFeatureSettings] = useState(DEFAULT_USER_FEATURE_SETTINGS);
+  const [splitEnabled, setSplitEnabled] = useState(false);
+  const [splitParts, setSplitParts] = useState("2");
+  const [applyToAllRecurring, setApplyToAllRecurring] = useState(true);
   // Estados para comprovante
   const [receiptPath, setReceiptPath] = useState<string>('');
   const [receiptFileName, setReceiptFileName] = useState<string>('');
@@ -187,6 +191,13 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
   }, [descricao]);
 
   useEffect(() => {
+    if (!featureSettings.autoCategorize) return;
+    if (!descricaoHint?.category) return;
+    if (!descricao.trim()) return;
+    setCategoria((prev) => (prev === "outros" ? descricaoHint.category! : prev));
+  }, [descricaoHint, descricao, featureSettings.autoCategorize]);
+
+  useEffect(() => {
     if (!user || !open) return;
     supabase.from("cartoes").select("*").eq("usuario_id", user.id).then(({ data }) => {
       if (data) setCartoes(data);
@@ -220,6 +231,18 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, sharedFile, user]);
 
+  useEffect(() => {
+    if (!featureSettings.autoSuggestCard) return;
+    if (metodo !== "cartao" || cartaoId || cartoes.length === 0) return;
+    const key = user?.id ? `sunshine:last-card:${user.id}` : null;
+    const lastCard = key ? localStorage.getItem(key) : null;
+    if (lastCard && cartoes.some((c) => c.id === lastCard)) {
+      setCartaoId(lastCard);
+      return;
+    }
+    setCartaoId(cartoes[0].id);
+  }, [featureSettings.autoSuggestCard, metodo, cartaoId, cartoes, user?.id]);
+
   // Debounce loja changes so the logo API is not called on every keystroke.
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedLoja(loja), 500);
@@ -248,6 +271,9 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
       setUsarReservaReceita(false);
       setReceiptPath('');
       setReceiptFileName('');
+      setSplitEnabled(false);
+      setSplitParts("2");
+      setApplyToAllRecurring(true);
     } else {
       resetForm();
     }
@@ -269,6 +295,9 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
     setUsarReservaReceita(false);
     setReceiptPath("");
     setReceiptFileName("");
+    setSplitEnabled(false);
+    setSplitParts("2");
+    setApplyToAllRecurring(true);
   };
 
   const handleManualLogoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -408,7 +437,7 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
           merchant_id: merchantId || null,
           merchant_logo_url: merchantLogoUrl || null,
         };
-        if (editItem.fixa && editItem.recorrencia_id) {
+        if (editItem.fixa && editItem.recorrencia_id && (!featureSettings.enableRecurringEditScope || applyToAllRecurring)) {
           const { data: groupRows, error: groupError } = await supabase
             .from("lancamentos")
             .select("id")
@@ -454,6 +483,24 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
             merchant_logo_url: merchantLogoUrl || null,
           });
         }
+        await insertLancamentosWithReceiptFallback(inserts);
+      } else if (!isReceita && metodoEfetivo === "avista" && featureSettings.enableSplitTransaction && splitEnabled && parseInt(splitParts) > 1) {
+        const parts = Math.min(10, Math.max(2, parseInt(splitParts) || 2));
+        const valorParcial = +(valorNum / parts).toFixed(2);
+        const inserts: TablesInsert<"lancamentos">[] = Array.from({ length: parts }, (_, i) => ({
+          usuario_id: user.id,
+          descricao: `${descricao} (parte ${i + 1}/${parts})`,
+          valor: valorParcial,
+          data,
+          data_compra: data,
+          tipo: tipoEfetivo,
+          categoria,
+          fixa: false,
+          cartao_id: null,
+          loja,
+          merchant_id: merchantId || null,
+          merchant_logo_url: merchantLogoUrl || null,
+        }));
         await insertLancamentosWithReceiptFallback(inserts);
       } else if (!isReceita && metodoEfetivo === "cartao" && parseInt(totalParcelas) > 1) {
         const numParcelas = parseInt(totalParcelas);
@@ -502,6 +549,9 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
       }
 
       queryClient.invalidateQueries({ queryKey: ["lancamentos"] });
+      if (metodoEfetivo === "cartao" && cartaoId && user?.id) {
+        localStorage.setItem(`sunshine:last-card:${user.id}`, cartaoId);
+      }
       toast({ title: editItem ? "Lançamento atualizado!" : "Lançamento adicionado!" });
       onOpenChange(false);
       resetForm();
@@ -523,23 +573,65 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
     setLoading(true);
     let error = null;
 
-    if (editItem.fixa && editItem.recorrencia_id && user) {
+    if (editItem.fixa && editItem.recorrencia_id && user && (!featureSettings.enableRecurringEditScope || applyToAllRecurring)) {
+      const { data: backupRows } = await supabase
+        .from("lancamentos")
+        .select("*")
+        .eq("usuario_id", user.id)
+        .eq("recorrencia_id", editItem.recorrencia_id);
       const { error: groupDeleteError } = await supabase
         .from("lancamentos")
         .delete()
         .eq("usuario_id", user.id)
         .eq("recorrencia_id", editItem.recorrencia_id);
       error = groupDeleteError;
+
+      if (!groupDeleteError && featureSettings.enableUndoAfterActions && (backupRows?.length ?? 0) > 0) {
+        toast({
+          title: "Recorrência excluída!",
+          action: (
+            <ToastAction
+              altText="Desfazer"
+              onClick={async () => {
+                const { error: undoErr } = await supabase.from("lancamentos").insert((backupRows ?? []) as never);
+                if (!undoErr) queryClient.invalidateQueries({ queryKey: ["lancamentos"] });
+              }}
+            >
+              Desfazer
+            </ToastAction>
+          ),
+        });
+      }
     } else {
+      const backup = editItem;
       const response = await supabase.from("lancamentos").delete().eq("id", editItem.id);
       error = response.error;
+
+      if (!response.error && featureSettings.enableUndoAfterActions) {
+        toast({
+          title: "Excluído!",
+          action: (
+            <ToastAction
+              altText="Desfazer"
+              onClick={async () => {
+                const { error: undoErr } = await supabase.from("lancamentos").insert(backup as never);
+                if (!undoErr) queryClient.invalidateQueries({ queryKey: ["lancamentos"] });
+              }}
+            >
+              Desfazer
+            </ToastAction>
+          ),
+        });
+      }
     }
 
     if (error) {
       toast({ title: "Erro ao excluir", variant: "destructive" });
     } else {
       queryClient.invalidateQueries({ queryKey: ["lancamentos"] });
-      toast({ title: editItem.fixa ? "Recorrencia excluida!" : "Excluído!" });
+      if (!featureSettings.enableUndoAfterActions) {
+        toast({ title: editItem.fixa ? "Recorrencia excluida!" : "Excluído!" });
+      }
       onOpenChange(false);
     }
     setLoading(false);
@@ -569,7 +661,7 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
           <div className="space-y-2">
             <Label>Descrição</Label>
             <Input value={descricao} onChange={(e) => setDescricao(e.target.value)} required />
-            {descricaoHint && (
+            {featureSettings.enablePredictiveSuggestions && descricaoHint && (
               <div className="rounded-md bg-secondary p-2 text-xs text-muted-foreground">
                 <p>{descricaoHint.text}</p>
                 {descricaoHint.category && categoria !== descricaoHint.category && (
@@ -647,6 +739,31 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
 
           {tipo === "despesa" && (
             <>
+              {featureSettings.enableTemplates && (
+                <div className="space-y-2 rounded-lg border border-border p-3">
+                  <Label>Templates rápidos</Label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      { nome: "Supermercado", categoria: "alimentacao" },
+                      { nome: "Combustível", categoria: "transporte" },
+                      { nome: "Assinatura", categoria: "servicos" },
+                    ].map((template) => (
+                      <button
+                        key={template.nome}
+                        type="button"
+                        className="rounded-full border border-border px-2 py-1 text-[10px] hover:border-primary hover:text-primary"
+                        onClick={() => {
+                          setDescricao(template.nome);
+                          setCategoria(template.categoria);
+                        }}
+                      >
+                        {template.nome}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div className="flex gap-2">
                 <Button type="button" variant={metodo === "avista" ? "default" : "outline"}
                   className="flex-1" onClick={() => setMetodo("avista")}>À Vista</Button>
@@ -673,7 +790,36 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
                   </div>
                 </div>
               )}
+
+              {featureSettings.enableSplitTransaction && metodo === "avista" && !fixo && (
+                <div className="space-y-2 rounded-lg bg-secondary p-3">
+                  <div className="flex items-center justify-between">
+                    <Label>Dividir transação</Label>
+                    <Switch checked={splitEnabled} onCheckedChange={setSplitEnabled} />
+                  </div>
+                  {splitEnabled && (
+                    <Input
+                      type="number"
+                      min="2"
+                      max="10"
+                      value={splitParts}
+                      onChange={(e) => setSplitParts(e.target.value)}
+                      placeholder="Quantidade de partes"
+                    />
+                  )}
+                </div>
+              )}
             </>
+          )}
+
+          {featureSettings.enableRecurringEditScope && editItem?.fixa && editItem?.recorrencia_id && (
+            <div className="flex items-center justify-between rounded-lg bg-secondary p-3">
+              <div>
+                <Label>Aplicar em toda recorrência</Label>
+                <p className="text-xs text-muted-foreground">Desative para editar/excluir apenas este lançamento.</p>
+              </div>
+              <Switch checked={applyToAllRecurring} onCheckedChange={setApplyToAllRecurring} />
+            </div>
           )}
 
           <div className="space-y-2">
