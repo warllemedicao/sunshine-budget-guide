@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import MonthSelector from "@/components/MonthSelector";
 import NovoLancamentoModal from "@/components/NovoLancamentoModal";
@@ -17,7 +17,7 @@ import { useToast } from "@/hooks/use-toast";
 import { ToastAction } from "@/components/ui/toast";
 import {
   TrendingUp, TrendingDown, CreditCard, ShoppingBag,
-  ChevronDown, ChevronUp, Plus, Trash2, Edit2, Check, Undo2, Paperclip,
+  Plus, Trash2, Edit2, Check, Undo2, Paperclip, Eye,
 } from "lucide-react";
 import { ReceiptUploadButton } from '@/components/ReceiptUploadButton';
 import { ReceiptViewer } from '@/components/ReceiptViewer';
@@ -470,7 +470,7 @@ const Dashboard = () => {
   const orfaosView = useMemo(() => applyDisplayFilters(stats.orfaos), [stats.orfaos, searchTerm, quickFilter]);
 
   return (
-    <div className="mx-auto max-w-lg space-y-5 p-4">
+    <div className="mx-auto max-w-lg space-y-5 p-4 pb-8">
       <MonthSelector mes={mes} ano={ano} onChange={(m, a) => { setMes(m); setAno(a); setExpandedCard(null); }} />
 
       {featureSettings.notifyCardClosing && closingAlerts.length > 0 && (
@@ -706,148 +706,106 @@ const Dashboard = () => {
         </Section>
       )}
 
-      {/* Saídas Fixas */}
-      <div className="space-y-2">
-        <div className="flex items-center gap-1.5">
-          <TrendingDown className="h-3.5 w-3.5 text-destructive" />
-          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Saídas Fixas</h3>
+      {/* Saídas Fixas (À vista + Cartões em sequência) */}
+      <div className="space-y-3">
+        <div className="flex items-center gap-2">
+          <TrendingDown className="h-4 w-4 text-destructive" />
+          <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Saídas Fixas</h3>
         </div>
-        {fixasDespesaView.length === 0 && (
-          <p className="text-xs text-muted-foreground">Nenhuma</p>
-        )}
-        {fixasDespesaView.map((l) => (
-          <MiniLancamentoRow
-            key={l.id}
-            item={l}
-            isPaid={!!fixedExpensePaidMap[l.id]}
-            onTogglePaid={() => toggleFixedExpensePaid(l.id)}
-            onClick={() => openEdit(l)}
-            onReceiptClick={() => { setReceiptLancamento(l); setShowReceiptModal(true); }}
-          />
-        ))}
-        {fixasDespesaView.length > 0 && (
-          <div className="rounded-lg bg-destructive/10 px-2 py-1.5 text-center">
-            <p className="text-xs font-semibold text-destructive">
-              Total: {formatCurrency(fixasDespesaView.reduce((s, l) => s + l.valor, 0))}
-            </p>
-          </div>
-        )}
+
+        <Card className="border-border/70 shadow-sm">
+          <CardContent className="p-3 space-y-2">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">À vista</p>
+            {fixasDespesaView.length === 0 && (
+              <p className="text-xs text-muted-foreground">Nenhuma saída fixa à vista neste mês.</p>
+            )}
+            {fixasDespesaView.map((l) => (
+              <MiniLancamentoRow
+                key={l.id}
+                item={l}
+                isPaid={!!fixedExpensePaidMap[l.id]}
+                onTogglePaid={() => toggleFixedExpensePaid(l.id)}
+                onClick={() => openEdit(l)}
+                onReceiptClick={() => { setReceiptLancamento(l); setShowReceiptModal(true); }}
+              />
+            ))}
+            {fixasDespesaView.length > 0 && (
+              <div className="rounded-lg bg-destructive/10 px-3 py-2 text-center">
+                <p className="text-xs font-semibold text-destructive">
+                  Total à vista: {formatCurrency(fixasDespesaView.reduce((s, l) => s + l.valor, 0))}
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="border-border/70 shadow-sm">
+          <CardContent className="p-3 space-y-2">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">No cartão</p>
+            {cartaoGroups.length === 0 && (
+              <p className="text-xs text-muted-foreground">Nenhum cartão encontrado.</p>
+            )}
+            {lancamentosLoading && cartaoGroups.length === 0 && (
+              <div className="space-y-2">
+                <Skeleton className="h-16 w-full rounded-lg" />
+                <Skeleton className="h-16 w-full rounded-lg" />
+              </div>
+            )}
+
+            {cartaoGroups.map(({ cartao, total, pago }) => (
+              <button
+                key={cartao.id}
+                onClick={() => setExpandedCard(cartao.id)}
+                className="w-full rounded-xl bg-card border border-border p-3 text-left transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
+              >
+                <div className="flex items-center gap-2">
+                  <BrandLogo
+                    store={cartao.nome}
+                    initialUrl={cartao.logo_url}
+                    merchantId={cartao.merchant_id}
+                    size={24}
+                    fallbackIcon={<CreditCard className="h-4 w-4 text-primary" />}
+                    fallbackBg="hsl(var(--primary) / 0.1)"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold truncate">{cartao.nome}</p>
+                    <p className="text-[11px] text-muted-foreground">Fatura fecha dia {cartao.fechamento} • vence dia {cartao.vencimento}</p>
+                  </div>
+                  <span className={cn(
+                    "text-[11px] px-2 py-1 rounded-full font-semibold",
+                    pago ? "bg-success/10 text-success" : "bg-warning/10 text-warning"
+                  )}>
+                    {pago ? "Pago" : "Pendente"}
+                  </span>
+                </div>
+                <div className="mt-2 flex items-center justify-between">
+                  <p className="text-base font-bold">{formatCurrency(total)}</p>
+                  <span className="inline-flex items-center gap-1 text-xs font-medium text-primary">
+                    <Eye className="h-3.5 w-3.5" />
+                    Abrir fatura
+                  </span>
+                </div>
+              </button>
+            ))}
+          </CardContent>
+        </Card>
       </div>
 
-      {/* Cartões resumido (abaixo de Saídas Fixas) */}
-      <div className="space-y-2">
-        <div className="flex items-center gap-1.5">
-          <CreditCard className="h-3.5 w-3.5 text-primary" />
-          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Cartões</h3>
-        </div>
-        {cartaoGroups.length === 0 && (
-          <p className="text-xs text-muted-foreground">Nenhum cartão</p>
-        )}
-        {lancamentosLoading && cartaoGroups.length === 0 && (
-          <div className="space-y-2">
-            <Skeleton className="h-16 w-full rounded-lg" />
-            <Skeleton className="h-16 w-full rounded-lg" />
-          </div>
-        )}
-        {cartaoGroups.map(({ cartao, total, pago }) => (
-          featureSettings.compactCardView ? (
-            /* Compact single-row card */
-            <button
-              key={cartao.id}
-              onClick={() => setExpandedCard(expandedCard === cartao.id ? null : cartao.id)}
-              className="w-full flex items-center gap-2 rounded-lg bg-card border border-border px-2 py-1.5 text-left hover:shadow-sm transition-shadow"
-            >
-              <BrandLogo
-                store={cartao.nome}
-                initialUrl={cartao.logo_url}
-                merchantId={cartao.merchant_id}
-                size={18}
-                fallbackIcon={<CreditCard className="h-3 w-3 text-primary" />}
-                fallbackBg="hsl(var(--primary) / 0.1)"
-              />
-              <p className="text-xs font-medium flex-1 truncate">{cartao.nome}</p>
-              <p className="text-xs font-semibold">{formatCurrency(total)}</p>
-              <span className={cn(
-                "text-[10px] px-1.5 py-0.5 rounded-full font-medium flex-shrink-0",
-                pago ? "bg-success/10 text-success" : "bg-warning/10 text-warning"
-              )}>
-                {pago ? "✓" : "⏳"}
-              </span>
-              {expandedCard === cartao.id ? (
-                <ChevronUp className="h-3 w-3 text-muted-foreground flex-shrink-0" />
-              ) : (
-                <ChevronDown className="h-3 w-3 text-muted-foreground flex-shrink-0" />
-              )}
-            </button>
-          ) : (
-          <button
-            key={cartao.id}
-            onClick={() => setExpandedCard(expandedCard === cartao.id ? null : cartao.id)}
-            className="w-full rounded-lg bg-card border border-border p-2 text-left hover:shadow-sm transition-shadow"
-          >
-            <div className="flex items-center gap-1.5 mb-0.5">
-              <BrandLogo
-                store={cartao.nome}
-                initialUrl={cartao.logo_url}
-                merchantId={cartao.merchant_id}
-                size={20}
-                fallbackIcon={<CreditCard className="h-3 w-3 text-primary" />}
-                fallbackBg="hsl(var(--primary) / 0.1)"
-              />
-              <p className="text-xs font-medium truncate">{cartao.nome}</p>
-            </div>
-            <p className="text-sm font-semibold">{formatCurrency(total)}</p>
-            <div className="flex items-center justify-between mt-1">
-              <span className={cn("text-[10px]", pago ? "text-success" : "text-warning")}>
-                {pago ? "✓ Pago" : "Pendente"}
-              </span>
-              {!pago && total > 0 && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    // Fechar fatura: criar fatura pendente (mes é 0-based, faturas usam 1-based)
-                    const mesFatura = mes + 1;
-                    const anoFatura = ano;
-                    supabase.from("faturas").insert({
-                      usuario_id: user!.id,
-                      cartao_id: cartao.id,
-                      mes: mesFatura,
-                      ano: anoFatura,
-                      valor_total: total,
-                      status: "pendente"
-                    }).then(({ error }) => {
-                      if (error) {
-                        toast({ title: "Erro ao fechar fatura", description: error.message, variant: "destructive" });
-                      } else {
-                        qc.invalidateQueries({ queryKey: ["faturas"] });
-                        toast({ title: "Fatura fechada!" });
-                      }
-                    });
-                  }}
-                  className="text-[10px] text-primary hover:underline"
-                  title="Fechar fatura pendente"
-                >
-                  Fechar
-                </button>
-              )}
-              {expandedCard === cartao.id ? (
-                <ChevronUp className="h-3 w-3 text-muted-foreground" />
-              ) : (
-                <ChevronDown className="h-3 w-3 text-muted-foreground" />
-              )}
-            </div>
-          </button>
-          )
-        ))}
-      </div>
-
-      {/* Fatura expandida - compras do cartão selecionado */}
+      {/* Fatura em popup sobreposto */}
       {expandedCard && (() => {
         const group = cartaoGroups.find((g) => g.cartao.id === expandedCard);
         if (!group) return null;
         return (
-          <Card className="border-primary/30">
-            <CardContent className="p-4 space-y-3">
+          <Dialog open={!!expandedCard} onOpenChange={(open) => !open && setExpandedCard(null)}>
+            <DialogContent className="sm:max-w-md max-h-[88vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Fatura • {group.cartao.nome}</DialogTitle>
+                <DialogDescription>
+                  Detalhes da fatura e compras deste mês em um único lugar.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-3">
               <div className="flex items-center justify-between gap-2">
                 <div className="flex-1">
                   <p className="text-xs text-muted-foreground">Fecha dia {group.cartao.fechamento}</p>
@@ -980,8 +938,9 @@ const Dashboard = () => {
                   </div>
                 );
               })()}
-            </CardContent>
-          </Card>
+              </div>
+            </DialogContent>
+          </Dialog>
         );
       })()}
 
@@ -1117,10 +1076,10 @@ const Dashboard = () => {
 /* ---- Sub-components ---- */
 
 const Section = ({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) => (
-  <div className="space-y-2">
-    <div className="flex items-center gap-2">
+  <div className="space-y-2 animate-in fade-in-0 slide-in-from-bottom-1 duration-300">
+    <div className="flex items-center gap-2 border-l-2 border-primary/40 pl-2">
       {icon}
-      <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">{title}</h3>
+      <h3 className="text-sm font-semibold text-foreground uppercase tracking-[0.08em]">{title}</h3>
     </div>
     <div className="space-y-2">{children}</div>
   </div>
