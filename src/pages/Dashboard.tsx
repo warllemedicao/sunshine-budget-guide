@@ -175,19 +175,22 @@ const Dashboard = () => {
     const receitas = lancamentos.filter((l) => isReceitaLancamento(l));
     const despesas = lancamentos.filter((l) => !isReceitaLancamento(l));
     const totalReceita = receitas.reduce((s, l) => s + Math.abs(l.valor), 0);
-    const totalDespesa = despesas.reduce((s, l) => s + Math.abs(l.valor), 0);
+    const totalDespesa = despesas
+      .filter((l) => !(l.fixa && !!l.cartao_id))
+      .reduce((s, l) => s + Math.abs(l.valor), 0);
     const fixasReceita = receitas.filter((l) => l.fixa && !l.cartao_id);
     const variaveisReceita = receitas.filter((l) => !l.fixa && !l.cartao_id);
     const fixasDespesa = despesas.filter((l) => l.fixa && !l.cartao_id);
     const cartaoIds = new Set(cartoes.map((c) => c.id));
-    // Only include card expenses that are linked to an existing card
-    const cartaoLanc = despesas.filter((l) => !!l.cartao_id && cartaoIds.has(l.cartao_id));
+    const fixasCartao = despesas.filter((l) => l.fixa && !!l.cartao_id && cartaoIds.has(l.cartao_id));
+    // Only include variable card expenses that are linked to an existing card
+    const cartaoLanc = despesas.filter((l) => !l.fixa && !!l.cartao_id && cartaoIds.has(l.cartao_id));
     const variaveis = despesas.filter((l) => !l.fixa && !l.cartao_id);
     // Orphaned: has cartao_id but no valid card
     const orfaos = cartoesLoaded
       ? despesas.filter((l) => !!l.cartao_id && !cartaoIds.has(l.cartao_id))
       : [];
-    return { totalReceita, totalDespesa, fixasReceita, variaveisReceita, fixasDespesa, cartaoLanc, variaveis, orfaos };
+    return { totalReceita, totalDespesa, fixasReceita, variaveisReceita, fixasDespesa, fixasCartao, cartaoLanc, variaveis, orfaos };
   }, [lancamentos, cartoes, cartoesLoaded]);
 
   const saldo = stats.totalReceita - stats.totalDespesa;
@@ -221,6 +224,23 @@ const Dashboard = () => {
 
     return Array.from(groups.values());
   }, [stats.cartaoLanc, cartoes, faturas]);
+
+  const fixasCartaoGroups = useMemo(() => {
+    const groups = new Map<string, { cartao: Tables<"cartoes">; pago: boolean; itens: Tables<"lancamentos">[] }>();
+
+    cartoes.forEach((c) => {
+      const fatura = faturas.find((f) => f.cartao_id === c.id);
+      groups.set(c.id, { cartao: c, pago: fatura?.status === "pago", itens: [] });
+    });
+
+    stats.fixasCartao.forEach((l) => {
+      if (!l.cartao_id) return;
+      const g = groups.get(l.cartao_id);
+      if (g) g.itens.push(l);
+    });
+
+    return Array.from(groups.values()).filter((g) => g.itens.length > 0);
+  }, [stats.fixasCartao, cartoes, faturas]);
 
   const deleteLancamento = useMutation({
     mutationFn: async (l: Tables<"lancamentos">) => {
@@ -334,6 +354,11 @@ const Dashboard = () => {
             <span className="text-muted-foreground">{formatCurrency(stats.totalDespesa)} / {formatCurrency(stats.totalReceita)}</span>
           </div>
           <Progress value={pctGasto} className="mt-2 h-2" />
+          {stats.fixasCartao.length > 0 && (
+            <p className="mt-2 text-[11px] text-muted-foreground">
+              Despesas fixas no cartão são exibidas separadamente e não entram neste total.
+            </p>
+          )}
         </CardContent>
       </Card>
 
@@ -606,6 +631,47 @@ const Dashboard = () => {
         );
       })()}
 
+      {/* Despesas fixas no cartão (visualização) */}
+      {fixasCartaoGroups.length > 0 && (
+        <Section title="Despesas Fixas no Cartão" icon={<CreditCard className="h-4 w-4 text-destructive" />}>
+          {fixasCartaoGroups.map((group) => (
+            <Card key={group.cartao.id} className="border-border/70">
+              <CardContent className="p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <BrandLogo
+                      store={group.cartao.nome}
+                      initialUrl={group.cartao.logo_url}
+                      merchantId={group.cartao.merchant_id}
+                      size={22}
+                      fallbackIcon={<CreditCard className="h-3.5 w-3.5 text-primary" />}
+                      fallbackBg="hsl(var(--primary) / 0.1)"
+                    />
+                    <p className="text-xs font-semibold truncate">{group.cartao.nome}</p>
+                  </div>
+                  <span className={cn("text-[10px] font-medium", group.pago ? "text-success" : "text-destructive")}> 
+                    {group.pago ? "Pago" : "Pendente"}
+                  </span>
+                </div>
+
+                <div className="space-y-1.5">
+                  {group.itens.map((item) => (
+                    <FixedCardExpenseRow
+                      key={item.id}
+                      item={item}
+                      paid={group.pago}
+                      onEdit={() => openEdit(item)}
+                      onDelete={() => deleteLancamento.mutate(item)}
+                      onReceiptClick={() => { setReceiptLancamento(item); setShowReceiptModal(true); }}
+                    />
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </Section>
+      )}
+
       {/* Despesas órfãs — card expenses with no valid card (ghost expenses) */}
       {stats.orfaos.length > 0 && (
         <div className="rounded-lg border border-destructive/50 bg-destructive/5 p-3 space-y-2">
@@ -798,6 +864,70 @@ const MiniLancamentoRow = ({
           <Paperclip className="h-3 w-3" />
         </button>
       )}
+    </div>
+  );
+};
+
+const FixedCardExpenseRow = ({
+  item,
+  paid,
+  onEdit,
+  onDelete,
+  onReceiptClick,
+}: {
+  item: Tables<"lancamentos">;
+  paid: boolean;
+  onEdit: () => void;
+  onDelete: () => void;
+  onReceiptClick: () => void;
+}) => {
+  const cat = getCategoriaInfo(item.categoria);
+  const Icon = cat.icon;
+  const hasReceipt = !!getDbComprovanteUrl(item) || !!getLocalReceipt(`${LANCAMENTO_RECEIPT_KEY}${item.id}`);
+
+  return (
+    <div className={cn(
+      "flex items-center gap-2 rounded-md border p-2",
+      paid ? "bg-success/10 border-success/40" : "bg-destructive/10 border-destructive/40",
+    )}>
+      <button onClick={onEdit} className="flex flex-1 items-center gap-2 text-left min-w-0">
+        {item.loja ? (
+          <BrandLogo
+            store={item.loja}
+            initialUrl={item.merchant_logo_url}
+            merchantId={item.merchant_id}
+            size={24}
+            fallbackIcon={<Icon className="h-3 w-3" style={{ color: cat.color }} />}
+            fallbackBg={cat.color + "20"}
+          />
+        ) : (
+          <div className="flex h-6 w-6 items-center justify-center rounded-md flex-shrink-0" style={{ backgroundColor: cat.color + "20" }}>
+            <Icon className="h-3 w-3" style={{ color: cat.color }} />
+          </div>
+        )}
+
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-medium truncate">{item.descricao}</p>
+          <p className="text-[10px] text-muted-foreground truncate">{item.loja || cat.label}</p>
+        </div>
+      </button>
+
+      <p className={cn("text-xs font-semibold", paid ? "text-success" : "text-destructive")}>
+        {formatCurrency(item.valor)}
+      </p>
+      <button
+        onClick={onReceiptClick}
+        className={cn("p-1 hover:text-foreground", hasReceipt ? "text-primary" : "text-muted-foreground")}
+        title={hasReceipt ? "Visualizar comprovante" : "Anexar comprovante"}
+      >
+        <Paperclip className="h-3 w-3" />
+      </button>
+      <button onClick={onEdit} className="p-1 text-muted-foreground hover:text-foreground" title="Editar">
+        <Edit2 className="h-3 w-3" />
+      </button>
+      <button onClick={onDelete} className="p-1 text-muted-foreground hover:text-destructive" title="Excluir">
+        <Trash2 className="h-3 w-3" />
+      </button>
     </div>
   );
 };
