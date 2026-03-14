@@ -17,6 +17,7 @@ import type { Tables } from "@/integrations/supabase/types";
 import BrandLogo from "@/components/BrandLogo";
 import { getAuthRedirectUrl } from "@/lib/authRedirect";
 import { startGoogleOAuth } from "@/lib/googleOAuth";
+import { cn } from "@/lib/utils";
 import {
   type UserFeatureSettings,
   DEFAULT_USER_FEATURE_SETTINGS,
