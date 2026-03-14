@@ -377,6 +377,36 @@ const Dashboard = () => {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["faturas"] }),
   });
 
+  // hasReceipt e applyDisplayFilters declarados ANTES dos useMemo que os usam.
+  // const em JS fica em TDZ até sua linha — o React chama o callback do useMemo
+  // imediatamente no render, causando ReferenceError se a const vier depois.
+  const hasReceipt = (l: Tables<"lancamentos">) => !!getDbComprovanteUrl(l) || !!getLocalReceipt(`${LANCAMENTO_RECEIPT_KEY}${l.id}`);
+
+  const applyDisplayFilters = (items: Tables<"lancamentos">[]) => {
+    const term = searchTerm.trim().toLowerCase();
+    return items.filter((item) => {
+      if (term.length > 0) {
+        const desc = (item.descricao ?? "").toLowerCase();
+        const store = (item.loja ?? "").toLowerCase();
+        if (!desc.includes(term) && !store.includes(term)) return false;
+      }
+
+      if (quickFilter === "com-anexo") return hasReceipt(item);
+      if (quickFilter === "sem-anexo") return !hasReceipt(item);
+      if (quickFilter === "fixas") return !!item.fixa;
+      if (quickFilter === "variaveis") return !item.fixa;
+
+      if (featureSettings.enableAdvancedFilters) {
+        if (advancedCategory !== "all" && item.categoria !== advancedCategory) return false;
+        const rawTipo = (item.tipo ?? "").toString().trim().toLowerCase();
+        const isReceita = rawTipo === "receita" || rawTipo === "entrada" || (rawTipo !== "despesa" && rawTipo !== "saida" && item.valor < 0);
+        if (advancedScope === "receitas" && !isReceita) return false;
+        if (advancedScope === "despesas" && isReceita) return false;
+      }
+      return true;
+    });
+  };
+
   const closingAlerts = useMemo(() => {
     const today = new Date();
     const currentMonth = today.getMonth() + 1;
@@ -432,33 +462,6 @@ const Dashboard = () => {
       return 0;
     }
   }, [user?.id]);
-
-  const hasReceipt = (l: Tables<"lancamentos">) => !!getDbComprovanteUrl(l) || !!getLocalReceipt(`${LANCAMENTO_RECEIPT_KEY}${l.id}`);
-
-  const applyDisplayFilters = (items: Tables<"lancamentos">[]) => {
-    const term = searchTerm.trim().toLowerCase();
-    return items.filter((item) => {
-      if (term.length > 0) {
-        const desc = (item.descricao ?? "").toLowerCase();
-        const store = (item.loja ?? "").toLowerCase();
-        if (!desc.includes(term) && !store.includes(term)) return false;
-      }
-
-      if (quickFilter === "com-anexo") return hasReceipt(item);
-      if (quickFilter === "sem-anexo") return !hasReceipt(item);
-      if (quickFilter === "fixas") return !!item.fixa;
-      if (quickFilter === "variaveis") return !item.fixa;
-
-      if (featureSettings.enableAdvancedFilters) {
-        if (advancedCategory !== "all" && item.categoria !== advancedCategory) return false;
-        const rawTipo = (item.tipo ?? "").toString().trim().toLowerCase();
-        const isReceita = rawTipo === "receita" || rawTipo === "entrada" || (rawTipo !== "despesa" && rawTipo !== "saida" && item.valor < 0);
-        if (advancedScope === "receitas" && !isReceita) return false;
-        if (advancedScope === "despesas" && isReceita) return false;
-      }
-      return true;
-    });
-  };
 
   const fixasReceitaView = useMemo(() => applyDisplayFilters(stats.fixasReceita), [stats.fixasReceita, searchTerm, quickFilter]);
   const variaveisReceitaView = useMemo(() => applyDisplayFilters(stats.variaveisReceita), [stats.variaveisReceita, searchTerm, quickFilter]);
