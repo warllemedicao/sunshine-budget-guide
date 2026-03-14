@@ -27,7 +27,13 @@ import { useShareTarget } from "@/hooks/useShareTarget";
 import BrandLogo from "@/components/BrandLogo";
 import Onboarding from "@/components/Onboarding";
 import GoogleFirstAccessWizard from "@/components/GoogleFirstAccessWizard";
-import { DEFAULT_USER_FEATURE_SETTINGS, readSettingsFromStorage, hasCompletedGoogleWizard } from "@/lib/userSettings";
+import {
+  DEFAULT_USER_FEATURE_SETTINGS,
+  clearPendingGoogleWizard,
+  hasCompletedGoogleWizard,
+  hasPendingGoogleWizard,
+  readSettingsFromStorage,
+} from "@/lib/userSettings";
 
 const getInstallmentBaseDescription = (descricao: string): string => descricao.replace(/ \(\d+\/\d+\)$/, "");
 
@@ -118,15 +124,18 @@ const Dashboard = () => {
     const isGoogleUser =
       user.app_metadata?.provider === "google" ||
       (Array.isArray(user.app_metadata?.providers) && user.app_metadata.providers.includes("google"));
-    if (!isGoogleUser) return;
-    if (hasCompletedGoogleWizard(user.id)) return;
-    // Só exibe o wizard para contas criadas nas últimas 24 horas (novos cadastros).
-    // Usuários antigos que nunca viram o wizard não serão interrompidos.
-    const createdAt = user.created_at ? new Date(user.created_at).getTime() : 0;
-    const isNewUser = Date.now() - createdAt < 24 * 60 * 60 * 1000;
-    if (isNewUser) {
-      setShowGoogleWizard(true);
+    if (!isGoogleUser) {
+      setShowGoogleWizard(false);
+      return;
     }
+    if (hasCompletedGoogleWizard(user.id)) {
+      clearPendingGoogleWizard();
+      setShowGoogleWizard(false);
+      return;
+    }
+    // Exibe tutorial SOMENTE quando o usuário veio do fluxo explícito de cadastro.
+    // Login de conta existente jamais deve abrir este wizard.
+    setShowGoogleWizard(hasPendingGoogleWizard());
   }, [user?.id]);
 
   useEffect(() => {

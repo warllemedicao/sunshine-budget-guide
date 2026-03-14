@@ -7,6 +7,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Wallet } from "lucide-react";
 import { getAuthRedirectUrl } from "@/lib/authRedirect";
 import { startGoogleOAuth } from "@/lib/googleOAuth";
+import { clearPendingGoogleWizard, setPendingGoogleWizard } from "@/lib/userSettings";
 
 const Auth = () => {
   const [isLogin, setIsLogin] = useState(true);
@@ -55,6 +56,13 @@ const Auth = () => {
   const handleGoogleAuth = async () => {
     setLoading(true);
     try {
+      // Tutorial de 1º acesso Google só pode aparecer quando o usuário escolhe
+      // explicitamente fluxo de cadastro (não no login comum).
+      if (isLogin) {
+        clearPendingGoogleWizard();
+      } else {
+        setPendingGoogleWizard();
+      }
       const { error } = await startGoogleOAuth(authRedirectUrl);
       if (error) throw error;
     } catch (error: unknown) {

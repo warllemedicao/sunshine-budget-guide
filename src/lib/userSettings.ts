@@ -121,6 +121,7 @@ export const writeSettingsToStorage = (userId: string, settings: UserFeatureSett
 
 // --- Google First-Access Wizard state (stored in localStorage) ---
 const GOOGLE_WIZARD_KEY = (uid: string) => `sunshine:wizard:google:${uid}`;
+const GOOGLE_WIZARD_PENDING_KEY = "sunshine:wizard:google:pending";
 
 export const hasCompletedGoogleWizard = (userId: string): boolean =>
   !!localStorage.getItem(GOOGLE_WIZARD_KEY(userId));
@@ -128,6 +129,30 @@ export const hasCompletedGoogleWizard = (userId: string): boolean =>
 export const markGoogleWizardComplete = (userId: string): void => {
   try {
     localStorage.setItem(GOOGLE_WIZARD_KEY(userId), "true");
+  } catch {
+    // ignore
+  }
+};
+
+export const hasPendingGoogleWizard = (): boolean => {
+  try {
+    return localStorage.getItem(GOOGLE_WIZARD_PENDING_KEY) === "true";
+  } catch {
+    return false;
+  }
+};
+
+export const setPendingGoogleWizard = (): void => {
+  try {
+    localStorage.setItem(GOOGLE_WIZARD_PENDING_KEY, "true");
+  } catch {
+    // ignore
+  }
+};
+
+export const clearPendingGoogleWizard = (): void => {
+  try {
+    localStorage.removeItem(GOOGLE_WIZARD_PENDING_KEY);
   } catch {
     // ignore
   }

@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import {
+  clearPendingGoogleWizard,
   DEFAULT_USER_FEATURE_SETTINGS,
   markGoogleWizardComplete,
   readSettingsFromStorage,
@@ -70,6 +71,7 @@ const GoogleFirstAccessWizard = ({ userId, userEmail, open, onComplete }: Props)
 
   const handleComplete = () => {
     markGoogleWizardComplete(userId);
+    clearPendingGoogleWizard();
     onComplete();
   };
 
