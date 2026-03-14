@@ -5,7 +5,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { markGoogleWizardComplete } from "@/lib/userSettings";
+import {
+  DEFAULT_USER_FEATURE_SETTINGS,
+  markGoogleWizardComplete,
+  readSettingsFromStorage,
+  writeSettingsToStorage,
+} from "@/lib/userSettings";
 
 interface Props {
   userId: string;
@@ -20,16 +25,28 @@ const GoogleFirstAccessWizard = ({ userId, userEmail, open, onComplete }: Props)
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [skipPassword, setSkipPassword] = useState(false);
+  const [selectedDeviceUnlock, setSelectedDeviceUnlock] = useState(false);
 
   useEffect(() => {
     if (!open) {
       setStep(0);
       setPassword("");
       setConfirmPassword("");
-      setSkipPassword(false);
+      setSelectedDeviceUnlock(false);
     }
   }, [open]);
+
+  const handleUseDeviceUnlock = () => {
+    const current = readSettingsFromStorage(userId) ?? DEFAULT_USER_FEATURE_SETTINGS;
+    writeSettingsToStorage(userId, {
+      ...current,
+      enableAppLock: true,
+      allowBiometricUnlock: true,
+      requirePasswordForGoogle: false,
+    });
+    setSelectedDeviceUnlock(true);
+    setStep(2);
+  };
 
   const handleSetPassword = async () => {
     if (password.length < 6) {
@@ -67,8 +84,8 @@ const GoogleFirstAccessWizard = ({ userId, userEmail, open, onComplete }: Props)
             Google (<span className="font-medium">{userEmail}</span>).
           </p>
           <p className="text-muted-foreground text-sm leading-relaxed">
-            Para proteger seus dados, recomendamos configurar uma <strong>senha de desbloqueio</strong>.
-            Ela será solicitada sempre que o app for reaberto.
+            Para proteger seus dados, escolha agora como deseja desbloquear o app:
+            <strong> senha de acesso</strong> ou <strong>desbloqueio do aparelho</strong>.
           </p>
         </div>
       ),
@@ -78,11 +95,11 @@ const GoogleFirstAccessWizard = ({ userId, userEmail, open, onComplete }: Props)
             Configurar senha →
           </Button>
           <Button
-            variant="ghost"
-            className="w-full text-muted-foreground text-xs"
-            onClick={() => { setSkipPassword(true); setStep(2); }}
+            variant="outline"
+            className="w-full"
+            onClick={handleUseDeviceUnlock}
           >
-            Pular por enquanto
+            Usar desbloqueio do aparelho
           </Button>
         </div>
       ),
@@ -131,14 +148,14 @@ const GoogleFirstAccessWizard = ({ userId, userEmail, open, onComplete }: Props)
       ),
     },
     {
-      title: skipPassword ? "✅ Configuração concluída" : "✅ Senha definida!",
+      title: selectedDeviceUnlock ? "✅ Configuração concluída" : "✅ Senha definida!",
       content: (
         <div className="space-y-4 text-center">
-          <div className="text-5xl">{skipPassword ? "🎉" : "🔒"}</div>
-          {skipPassword ? (
+          <div className="text-5xl">{selectedDeviceUnlock ? "📱" : "🔒"}</div>
+          {selectedDeviceUnlock ? (
             <p className="text-muted-foreground text-sm leading-relaxed">
-              Tudo pronto! Você pode configurar uma senha depois em{" "}
-              <strong>Perfil → Segurança</strong>.
+              Tudo pronto! O app ficará protegido com o desbloqueio do seu aparelho.
+              Se quiser, você pode definir uma senha depois em <strong>Perfil → Segurança</strong>.
             </p>
           ) : (
             <p className="text-muted-foreground text-sm leading-relaxed">

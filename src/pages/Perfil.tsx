@@ -24,6 +24,8 @@ import {
   writeSettingsToStorage,
 } from "@/lib/userSettings";
 
+type DevicePermissionState = "granted" | "denied" | "prompt" | "unsupported";
+
 const BANK_SUGGESTIONS = [
   "Nubank",
   "Caixa",
@@ -53,6 +55,19 @@ const normalizePhoneE164 = (value: string): string | null => {
 
   if (normalized.length < 12 || normalized.length > 15) return null;
   return `+${normalized}`;
+};
+
+const permissionLabel = (state: DevicePermissionState): string => {
+  if (state === "granted") return "Permitido";
+  if (state === "denied") return "Negado";
+  if (state === "prompt") return "Pendente";
+  return "Não suportado";
+};
+
+const permissionColor = (state: DevicePermissionState): string => {
+  if (state === "granted") return "text-success";
+  if (state === "denied") return "text-destructive";
+  return "text-muted-foreground";
 };
 
 const Perfil = () => {
@@ -116,6 +131,9 @@ const Perfil = () => {
   const [showCartaoModal, setShowCartaoModal] = useState(false);
   const [editCartao, setEditCartao] = useState<Tables<"cartoes"> | null>(null);
   const [featureSettings, setFeatureSettings] = useState<UserFeatureSettings>(DEFAULT_USER_FEATURE_SETTINGS);
+  const [cameraPermission, setCameraPermission] = useState<DevicePermissionState>("prompt");
+  const [locationPermission, setLocationPermission] = useState<DevicePermissionState>("prompt");
+  const [notificationPermission, setNotificationPermission] = useState<DevicePermissionState>("prompt");
 
   useEffect(() => {
     if (profile) {
@@ -134,6 +152,36 @@ const Perfil = () => {
     if (!user?.id) return;
     setFeatureSettings(readSettingsFromStorage(user.id));
   }, [user?.id]);
+
+  const refreshPermissionsState = async () => {
+    try {
+      if (!navigator.permissions?.query) {
+        setCameraPermission("unsupported");
+        setLocationPermission("unsupported");
+      } else {
+        const camera = await navigator.permissions.query({ name: "camera" as PermissionName });
+        const location = await navigator.permissions.query({ name: "geolocation" });
+        setCameraPermission((camera.state as DevicePermissionState) ?? "prompt");
+        setLocationPermission((location.state as DevicePermissionState) ?? "prompt");
+      }
+
+      if (typeof Notification === "undefined") {
+        setNotificationPermission("unsupported");
+      } else {
+        const current = Notification.permission;
+        setNotificationPermission(current === "default" ? "prompt" : (current as DevicePermissionState));
+      }
+    } catch {
+      // fallback conservador
+      setCameraPermission((prev) => prev === "granted" ? prev : "prompt");
+      setLocationPermission((prev) => prev === "granted" ? prev : "prompt");
+      setNotificationPermission((prev) => prev === "granted" ? prev : "prompt");
+    }
+  };
+
+  useEffect(() => {
+    void refreshPermissionsState();
+  }, []);
 
   const saveFeatureSettings = (next: UserFeatureSettings) => {
     setFeatureSettings(next);
@@ -204,6 +252,64 @@ const Perfil = () => {
       toast({ title: "Erro ao atualizar senha", description: message, variant: "destructive" });
     } finally {
       setSalvandoSenha(false);
+    }
+  };
+
+  const handleRequestCameraPermission = async () => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      toast({ title: "Câmera indisponível", description: "Seu dispositivo não suporta acesso à câmera.", variant: "destructive" });
+      setCameraPermission("unsupported");
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      stream.getTracks().forEach((track) => track.stop());
+      setCameraPermission("granted");
+      toast({ title: "Permissão de câmera concedida" });
+    } catch {
+      setCameraPermission("denied");
+      toast({ title: "Permissão de câmera negada", description: "Você pode permitir depois nas configurações do aparelho.", variant: "destructive" });
+    }
+  };
+
+  const handleRequestLocationPermission = async () => {
+    if (!navigator.geolocation) {
+      toast({ title: "Localização indisponível", description: "Seu dispositivo não suporta geolocalização.", variant: "destructive" });
+      setLocationPermission("unsupported");
+      return;
+    }
+
+    await new Promise<void>((resolve) => {
+      navigator.geolocation.getCurrentPosition(
+        () => {
+          setLocationPermission("granted");
+          toast({ title: "Permissão de localização concedida" });
+          resolve();
+        },
+        () => {
+          setLocationPermission("denied");
+          toast({ title: "Permissão de localização negada", description: "Você pode permitir depois nas configurações do aparelho.", variant: "destructive" });
+          resolve();
+        },
+        { timeout: 10000 },
+      );
+    });
+  };
+
+  const handleRequestNotificationPermission = async () => {
+    if (typeof Notification === "undefined") {
+      setNotificationPermission("unsupported");
+      toast({ title: "Notificações indisponíveis", description: "Seu dispositivo não suporta notificações via Web API.", variant: "destructive" });
+      return;
+    }
+
+    const result = await Notification.requestPermission();
+    const mapped = result === "default" ? "prompt" : (result as DevicePermissionState);
+    setNotificationPermission(mapped);
+    if (mapped === "granted") {
+      toast({ title: "Permissão de notificações concedida" });
+    } else {
+      toast({ title: "Permissão de notificações não concedida", description: "Você pode ativar depois nas configurações do aparelho.", variant: "destructive" });
     }
   };
 
@@ -778,6 +884,36 @@ const Perfil = () => {
             <AccordionItem value="perfil-seguranca">
               <AccordionTrigger>Perfil e Segurança</AccordionTrigger>
               <AccordionContent className="space-y-3">
+                <div className="rounded-md border border-border p-3 space-y-2">
+                  <p className="text-sm font-medium">Senha de acesso</p>
+                  <p className="text-xs text-muted-foreground">
+                    Defina ou altere sua senha para desbloquear o app com segurança.
+                  </p>
+                  <div className="space-y-1">
+                    <Label>{isGoogleSession ? "Definir ou alterar senha" : "Alterar senha"}</Label>
+                    <Input
+                      type="password"
+                      value={novaSenha}
+                      onChange={(e) => setNovaSenha(e.target.value)}
+                      placeholder="Nova senha"
+                      autoComplete="new-password"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Confirmar nova senha</Label>
+                    <Input
+                      type="password"
+                      value={confirmacaoSenha}
+                      onChange={(e) => setConfirmacaoSenha(e.target.value)}
+                      placeholder="Repita a nova senha"
+                      autoComplete="new-password"
+                    />
+                  </div>
+                  <Button type="button" size="sm" variant="outline" onClick={handleSalvarSenha} disabled={salvandoSenha}>
+                    {salvandoSenha ? "Salvando senha..." : "Salvar senha"}
+                  </Button>
+                </div>
+
                 <SettingToggleRow
                   title="Habilitar bloqueio do app"
                   description="Quando ativo, o app pede desbloqueio por senha/digital ao abrir."
@@ -820,6 +956,49 @@ const Perfil = () => {
                   checked={featureSettings.showProfileTips}
                   onCheckedChange={(v) => toggleFeatureSetting("showProfileTips", v)}
                 />
+
+                <div className="rounded-md border border-border p-3 space-y-3">
+                  <div>
+                    <p className="text-sm font-medium">Permissões do aparelho</p>
+                    <p className="text-xs text-muted-foreground">
+                      Recomendado para o APK: conceda câmera, localização e notificações para experiência completa.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-medium">Câmera</p>
+                      <p className={cn("text-xs", permissionColor(cameraPermission))}>{permissionLabel(cameraPermission)}</p>
+                    </div>
+                    <Button type="button" size="sm" variant="outline" onClick={handleRequestCameraPermission}>
+                      Solicitar
+                    </Button>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-medium">Localização</p>
+                      <p className={cn("text-xs", permissionColor(locationPermission))}>{permissionLabel(locationPermission)}</p>
+                    </div>
+                    <Button type="button" size="sm" variant="outline" onClick={handleRequestLocationPermission}>
+                      Solicitar
+                    </Button>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-medium">Notificações</p>
+                      <p className={cn("text-xs", permissionColor(notificationPermission))}>{permissionLabel(notificationPermission)}</p>
+                    </div>
+                    <Button type="button" size="sm" variant="outline" onClick={handleRequestNotificationPermission}>
+                      Solicitar
+                    </Button>
+                  </div>
+
+                  <Button type="button" size="sm" variant="ghost" onClick={() => void refreshPermissionsState()}>
+                    Atualizar status
+                  </Button>
+                </div>
               </AccordionContent>
             </AccordionItem>
           </Accordion>
