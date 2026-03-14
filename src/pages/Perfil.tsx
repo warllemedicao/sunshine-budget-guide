@@ -6,6 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { formatCurrency } from "@/lib/formatters";
@@ -28,6 +30,65 @@ const BANK_SUGGESTIONS = [
   "Mercado Pago",
   "PagBank",
 ];
+
+type UserFeatureSettings = {
+  autoCategorize: boolean;
+  autoSuggestCard: boolean;
+  enableTemplates: boolean;
+  enablePredictiveSuggestions: boolean;
+  enableSplitTransaction: boolean;
+  showInvoicePreview: boolean;
+  enableRecurringEditScope: boolean;
+  enableAdvancedFilters: boolean;
+  blockDuplicateTransactions: boolean;
+  enableUndoAfterActions: boolean;
+  requireReceiptAboveAmount: boolean;
+  receiptMinAmount: number;
+  notifyCardClosing: boolean;
+  notifyCardDue: boolean;
+  notifyAnomalies: boolean;
+  notifyMissingReceipt: boolean;
+  notifyOrphanTransactions: boolean;
+  notifySubscriptionCharges: boolean;
+  enableImportCenter: boolean;
+  enableExperimentalFeatures: boolean;
+};
+
+const DEFAULT_USER_FEATURE_SETTINGS: UserFeatureSettings = {
+  autoCategorize: true,
+  autoSuggestCard: true,
+  enableTemplates: false,
+  enablePredictiveSuggestions: false,
+  enableSplitTransaction: false,
+  showInvoicePreview: true,
+  enableRecurringEditScope: false,
+  enableAdvancedFilters: false,
+  blockDuplicateTransactions: false,
+  enableUndoAfterActions: true,
+  requireReceiptAboveAmount: false,
+  receiptMinAmount: 200,
+  notifyCardClosing: true,
+  notifyCardDue: true,
+  notifyAnomalies: false,
+  notifyMissingReceipt: false,
+  notifyOrphanTransactions: true,
+  notifySubscriptionCharges: false,
+  enableImportCenter: false,
+  enableExperimentalFeatures: false,
+};
+
+const getSettingsStorageKey = (userId: string) => `sunshine:settings:${userId}`;
+
+const readSettingsFromStorage = (userId: string): UserFeatureSettings => {
+  try {
+    const raw = localStorage.getItem(getSettingsStorageKey(userId));
+    if (!raw) return DEFAULT_USER_FEATURE_SETTINGS;
+    const parsed = JSON.parse(raw) as Partial<UserFeatureSettings>;
+    return { ...DEFAULT_USER_FEATURE_SETTINGS, ...parsed };
+  } catch {
+    return DEFAULT_USER_FEATURE_SETTINGS;
+  }
+};
 
 const normalizePhoneE164 = (value: string): string | null => {
   const digitsOnly = value.replace(/\D/g, "");
@@ -107,6 +168,7 @@ const Perfil = () => {
   const [revogandoWhatsapp, setRevogandoWhatsapp] = useState(false);
   const [showCartaoModal, setShowCartaoModal] = useState(false);
   const [editCartao, setEditCartao] = useState<Tables<"cartoes"> | null>(null);
+  const [featureSettings, setFeatureSettings] = useState<UserFeatureSettings>(DEFAULT_USER_FEATURE_SETTINGS);
 
   useEffect(() => {
     if (profile) {
@@ -120,6 +182,30 @@ const Perfil = () => {
       setWhatsappPhone(whatsappLink.phone_e164);
     }
   }, [whatsappLink?.phone_e164]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    setFeatureSettings(readSettingsFromStorage(user.id));
+  }, [user?.id]);
+
+  const saveFeatureSettings = (next: UserFeatureSettings) => {
+    setFeatureSettings(next);
+    if (!user?.id) return;
+    try {
+      localStorage.setItem(getSettingsStorageKey(user.id), JSON.stringify(next));
+    } catch {
+      // ignore localStorage failures
+    }
+  };
+
+  const toggleFeatureSetting = (key: keyof UserFeatureSettings, enabled: boolean) => {
+    saveFeatureSettings({ ...featureSettings, [key]: enabled });
+  };
+
+  const restoreDefaultSettings = () => {
+    saveFeatureSettings(DEFAULT_USER_FEATURE_SETTINGS);
+    toast({ title: "Configurações restauradas para o padrão" });
+  };
 
   const updateProfile = useMutation({
     mutationFn: async () => {
@@ -377,37 +463,214 @@ const Perfil = () => {
           <CardTitle className="text-base">Configurações</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium">Tema</p>
-              <p className="text-xs text-muted-foreground">Escolha entre claro, escuro ou automático</p>
-            </div>
-            <div className="flex gap-2">
-              <Button
-                variant={theme === "light" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setTheme("light")}
-                aria-label="Tema claro"
-              >
-                <Sun className="h-4 w-4" />
-              </Button>
-              <Button
-                variant={theme === "dark" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setTheme("dark")}
-                aria-label="Tema escuro"
-              >
-                <Moon className="h-4 w-4" />
-              </Button>
-              <Button
-                variant={theme === "system" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setTheme("system")}
-                aria-label="Tema do sistema"
-              >
-                <span className="text-xs">Auto</span>
-              </Button>
-            </div>
+          <div className="rounded-md bg-secondary/50 p-3 text-xs text-muted-foreground">
+            Ative ou desative recursos por categoria. As preferências são salvas por usuário neste dispositivo.
+          </div>
+
+          <Accordion type="multiple" className="w-full">
+            <AccordionItem value="aparencia">
+              <AccordionTrigger>Aparência</AccordionTrigger>
+              <AccordionContent className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium">Tema</p>
+                    <p className="text-xs text-muted-foreground">Escolha entre claro, escuro ou automático</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      variant={theme === "light" ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setTheme("light")}
+                      aria-label="Tema claro"
+                    >
+                      <Sun className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant={theme === "dark" ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setTheme("dark")}
+                      aria-label="Tema escuro"
+                    >
+                      <Moon className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant={theme === "system" ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setTheme("system")}
+                      aria-label="Tema do sistema"
+                    >
+                      <span className="text-xs">Auto</span>
+                    </Button>
+                  </div>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="lancamentos">
+              <AccordionTrigger>Lançamentos e automações</AccordionTrigger>
+              <AccordionContent className="space-y-3">
+                <SettingToggleRow
+                  title="Auto-categorizar lançamentos"
+                  description="Sugere categoria automaticamente por histórico de descrição e loja."
+                  checked={featureSettings.autoCategorize}
+                  onCheckedChange={(v) => toggleFeatureSetting("autoCategorize", v)}
+                />
+                <SettingToggleRow
+                  title="Sugerir cartão automaticamente"
+                  description="Pré-seleciona o cartão mais provável para novas compras."
+                  checked={featureSettings.autoSuggestCard}
+                  onCheckedChange={(v) => toggleFeatureSetting("autoSuggestCard", v)}
+                />
+                <SettingToggleRow
+                  title="Mostrar prévia da fatura"
+                  description="Exibe em qual mês da fatura a compra cairá no formulário."
+                  checked={featureSettings.showInvoicePreview}
+                  onCheckedChange={(v) => toggleFeatureSetting("showInvoicePreview", v)}
+                />
+                <SettingToggleRow
+                  title="Habilitar templates de lançamento"
+                  description="Permite criar lançamentos modelo para uso rápido."
+                  checked={featureSettings.enableTemplates}
+                  onCheckedChange={(v) => toggleFeatureSetting("enableTemplates", v)}
+                />
+                <SettingToggleRow
+                  title="Habilitar sugestões preditivas"
+                  description="Sugere valores e categorias com base no comportamento anterior."
+                  checked={featureSettings.enablePredictiveSuggestions}
+                  onCheckedChange={(v) => toggleFeatureSetting("enablePredictiveSuggestions", v)}
+                />
+                <SettingToggleRow
+                  title="Habilitar divisão de transação (split)"
+                  description="Permite separar um lançamento em múltiplas categorias."
+                  checked={featureSettings.enableSplitTransaction}
+                  onCheckedChange={(v) => toggleFeatureSetting("enableSplitTransaction", v)}
+                />
+                <SettingToggleRow
+                  title="Edição avançada de recorrência"
+                  description="Ao editar fixos, oferecer opções: este, próximos ou todos."
+                  checked={featureSettings.enableRecurringEditScope}
+                  onCheckedChange={(v) => toggleFeatureSetting("enableRecurringEditScope", v)}
+                />
+                <SettingToggleRow
+                  title="Filtros avançados na lista"
+                  description="Habilita filtros por comprovante, valor, cartão e status."
+                  checked={featureSettings.enableAdvancedFilters}
+                  onCheckedChange={(v) => toggleFeatureSetting("enableAdvancedFilters", v)}
+                />
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="validacao">
+              <AccordionTrigger>Validação e segurança</AccordionTrigger>
+              <AccordionContent className="space-y-3">
+                <SettingToggleRow
+                  title="Bloquear duplicidades suspeitas"
+                  description="Alerta antes de salvar lançamentos muito parecidos em curto intervalo."
+                  checked={featureSettings.blockDuplicateTransactions}
+                  onCheckedChange={(v) => toggleFeatureSetting("blockDuplicateTransactions", v)}
+                />
+                <SettingToggleRow
+                  title="Desfazer após salvar/excluir"
+                  description="Mostra ação de desfazer por alguns segundos após operações críticas."
+                  checked={featureSettings.enableUndoAfterActions}
+                  onCheckedChange={(v) => toggleFeatureSetting("enableUndoAfterActions", v)}
+                />
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="comprovantes">
+              <AccordionTrigger>Comprovantes</AccordionTrigger>
+              <AccordionContent className="space-y-3">
+                <SettingToggleRow
+                  title="Exigir comprovante acima de um valor"
+                  description="Solicita comprovante automaticamente para despesas maiores."
+                  checked={featureSettings.requireReceiptAboveAmount}
+                  onCheckedChange={(v) => toggleFeatureSetting("requireReceiptAboveAmount", v)}
+                />
+                <div className="space-y-1">
+                  <Label>Valor mínimo (R$)</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={featureSettings.receiptMinAmount}
+                    onChange={(e) => {
+                      const value = Number(e.target.value);
+                      saveFeatureSettings({
+                        ...featureSettings,
+                        receiptMinAmount: Number.isFinite(value) && value >= 0 ? value : 0,
+                      });
+                    }}
+                  />
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="notificacoes">
+              <AccordionTrigger>Notificações</AccordionTrigger>
+              <AccordionContent className="space-y-3">
+                <SettingToggleRow
+                  title="Avisar fechamento próximo da fatura"
+                  description="Notifica quando o cartão estiver perto do dia de fechamento."
+                  checked={featureSettings.notifyCardClosing}
+                  onCheckedChange={(v) => toggleFeatureSetting("notifyCardClosing", v)}
+                />
+                <SettingToggleRow
+                  title="Avisar vencimento próximo"
+                  description="Notifica dias antes do vencimento das faturas pendentes."
+                  checked={featureSettings.notifyCardDue}
+                  onCheckedChange={(v) => toggleFeatureSetting("notifyCardDue", v)}
+                />
+                <SettingToggleRow
+                  title="Avisar anomalias de gasto"
+                  description="Detecta gastos fora do padrão e envia alerta."
+                  checked={featureSettings.notifyAnomalies}
+                  onCheckedChange={(v) => toggleFeatureSetting("notifyAnomalies", v)}
+                />
+                <SettingToggleRow
+                  title="Avisar comprovantes faltantes"
+                  description="Lembra de anexar comprovante quando necessário."
+                  checked={featureSettings.notifyMissingReceipt}
+                  onCheckedChange={(v) => toggleFeatureSetting("notifyMissingReceipt", v)}
+                />
+                <SettingToggleRow
+                  title="Avisar lançamentos órfãos"
+                  description="Notifica quando houver despesas sem cartão associado."
+                  checked={featureSettings.notifyOrphanTransactions}
+                  onCheckedChange={(v) => toggleFeatureSetting("notifyOrphanTransactions", v)}
+                />
+                <SettingToggleRow
+                  title="Detectar cobranças de assinatura"
+                  description="Destaca possíveis cobranças recorrentes de serviços."
+                  checked={featureSettings.notifySubscriptionCharges}
+                  onCheckedChange={(v) => toggleFeatureSetting("notifySubscriptionCharges", v)}
+                />
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="futuro">
+              <AccordionTrigger>Importação e recursos futuros</AccordionTrigger>
+              <AccordionContent className="space-y-3">
+                <SettingToggleRow
+                  title="Central de importação e conciliação"
+                  description="Prepara o app para importação CSV/OFX com conferência automática."
+                  checked={featureSettings.enableImportCenter}
+                  onCheckedChange={(v) => toggleFeatureSetting("enableImportCenter", v)}
+                />
+                <SettingToggleRow
+                  title="Recursos experimentais"
+                  description="Ativa novidades em teste antes do lançamento geral."
+                  checked={featureSettings.enableExperimentalFeatures}
+                  onCheckedChange={(v) => toggleFeatureSetting("enableExperimentalFeatures", v)}
+                />
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
+
+          <div className="flex justify-end">
+            <Button type="button" variant="outline" size="sm" onClick={restoreDefaultSettings}>
+              Restaurar padrão
+            </Button>
           </div>
         </CardContent>
       </Card>
@@ -470,6 +733,25 @@ const Perfil = () => {
       </Button>
 
       <CartaoModal open={showCartaoModal} onOpenChange={setShowCartaoModal} editItem={editCartao} userId={user?.id || ""} />
+    </div>
+  );
+};
+
+interface SettingToggleRowProps {
+  title: string;
+  description: string;
+  checked: boolean;
+  onCheckedChange: (checked: boolean) => void;
+}
+
+const SettingToggleRow = ({ title, description, checked, onCheckedChange }: SettingToggleRowProps) => {
+  return (
+    <div className="flex items-start justify-between gap-3 rounded-md border border-border p-3">
+      <div>
+        <p className="text-sm font-medium">{title}</p>
+        <p className="text-xs text-muted-foreground">{description}</p>
+      </div>
+      <Switch checked={checked} onCheckedChange={onCheckedChange} />
     </div>
   );
 };
