@@ -316,7 +316,7 @@ const Dashboard = () => {
         <Card className="border-warning/50 bg-warning/10">
           <CardContent className="p-3">
             <p className="text-sm font-medium text-warning-foreground">
-              ⚠️ Fechamento próximo: {closingAlerts.map(c => c.nome).join(", ")} fecha{mês === 1 ? "" : "m"} no dia {closingAlerts[0].fechamento}.
+              ⚠️ Fechamento próximo: {closingAlerts.map(c => c.nome).join(", ")} fecha{closingAlerts.length === 1 ? "" : "m"} no dia {closingAlerts[0].fechamento}.
             </p>
           </CardContent>
         </Card>
@@ -426,10 +426,7 @@ const Dashboard = () => {
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      // Fechar fatura: criar fatura pendente
-                      const mesAtual = mes + 1; // mes is 0-based? Wait, mes is from MonthSelector, probably 0-11
-                      // In MonthSelector, mes is 0-11, ano is year
-                      // But in faturas, mes is 1-12
+                      // Fechar fatura: criar fatura pendente (mes é 0-based, faturas usam 1-based)
                       const mesFatura = mes + 1;
                       const anoFatura = ano;
                       supabase.from("faturas").insert({

@@ -65,6 +65,19 @@ const Objetivos = () => {
     },
   });
 
+  const deleteGlobal = useMutation({
+    mutationFn: async (tipo: string) => {
+      const existing = globais.find((g) => g.tipo === tipo);
+      if (!existing) return;
+      const { error } = await supabase.from("objetivos_globais").delete().eq("id", existing.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["objetivos_globais"] });
+      toast({ title: "Objetivo removido!" });
+    },
+  });
+
   const addListItem = useMutation({
     mutationFn: async (params: { tipo: string; nome: string; data_prevista?: string; valor_previsto: number }) => {
       const { error } = await supabase.from("objetivos_lista").insert({ ...params, user_id: user!.id });
@@ -93,6 +106,7 @@ const Objetivos = () => {
         icon={<TrendingUp className="h-5 w-5 text-success" />}
         data={investimento}
         onSave={(v) => upsertGlobal.mutate({ tipo: "investimento", ...v })}
+        onDelete={investimento ? () => deleteGlobal.mutate("investimento") : undefined}
       />
 
       {/* Reserva */}
@@ -133,9 +147,10 @@ interface GoalCardProps {
   data?: { valor_atual: number; valor_meta: number; data_limite: string | null } | null;
   onSave: (v: { valor_atual: number; valor_meta: number; data_limite?: string }) => void;
   hideMeta?: boolean;
+  onDelete?: () => void;
 }
 
-const GoalCard = ({ title, icon, data, onSave, hideMeta }: GoalCardProps) => {
+const GoalCard = ({ title, icon, data, onSave, hideMeta, onDelete }: GoalCardProps) => {
   const [editing, setEditing] = useState(false);
   const [atual, setAtual] = useState(String(data?.valor_atual ?? 0));
   const [meta, setMeta] = useState(String(data?.valor_meta ?? 0));
@@ -157,16 +172,23 @@ const GoalCard = ({ title, icon, data, onSave, hideMeta }: GoalCardProps) => {
     <Card className={pct >= 100 ? "ring-2 ring-success" : ""}>
       <CardHeader className="flex flex-row items-center gap-3 pb-2">
         {icon}
-        <CardTitle className="text-base">{title}</CardTitle>
-        {pct >= 100 && (
-          <span className="ml-auto px-2 py-1 bg-success text-success-foreground text-xs font-medium rounded-full">
-            🎉 Meta Atingida!
-          </span>
-        )}
-        {!pct >= 100 && (
-          <button onClick={() => { setEditing(!editing); setAtual(String(data?.valor_atual ?? 0)); setMeta(String(data?.valor_meta ?? 0)); setDataLimite(data?.data_limite ?? ""); }}
-            className="ml-auto p-1 text-muted-foreground hover:text-foreground">
-            {editing ? <X className="h-4 w-4" /> : <Edit2 className="h-4 w-4" />}
+        <div className="flex flex-1 items-center gap-2 min-w-0">
+          <CardTitle className="text-base">{title}</CardTitle>
+          {pct >= 100 && (
+            <span className="px-1.5 py-0.5 bg-success text-success-foreground text-[10px] font-medium rounded-full whitespace-nowrap">
+              🎉 Meta!
+            </span>
+          )}
+        </div>
+        <button
+          onClick={() => { setEditing(!editing); setAtual(String(data?.valor_atual ?? 0)); setMeta(String(data?.valor_meta ?? 0)); setDataLimite(data?.data_limite ?? ""); }}
+          className="p-1 text-muted-foreground hover:text-foreground flex-shrink-0"
+        >
+          {editing ? <X className="h-4 w-4" /> : <Edit2 className="h-4 w-4" />}
+        </button>
+        {onDelete && (
+          <button onClick={onDelete} className="p-1 text-muted-foreground hover:text-destructive flex-shrink-0">
+            <Trash2 className="h-4 w-4" />
           </button>
         )}
       </CardHeader>

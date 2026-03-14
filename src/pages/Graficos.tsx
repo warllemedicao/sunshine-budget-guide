@@ -31,9 +31,15 @@ const Graficos = () => {
 
   const chartData = useMemo(() => {
     const groups = new Map<string, number>();
-    lancamentos.forEach((l) => {
-      groups.set(l.categoria, (groups.get(l.categoria) || 0) + l.valor);
-    });
+    lancamentos
+      .filter((l) => {
+        const t = (l.tipo ?? "").toString().trim().toLowerCase();
+        // Inclui apenas despesas; exclui receitas/entradas
+        return t === "despesa" || t === "saida" || (t !== "receita" && t !== "entrada" && l.valor >= 0);
+      })
+      .forEach((l) => {
+        groups.set(l.categoria, (groups.get(l.categoria) || 0) + Math.abs(l.valor));
+      });
     return Array.from(groups.entries())
       .map(([id, value]) => ({
         name: getCategoriaInfo(id).label,
