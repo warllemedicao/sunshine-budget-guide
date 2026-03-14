@@ -19,6 +19,7 @@ const Dashboard = lazy(() => import("@/pages/Dashboard"));
 const Objetivos = lazy(() => import("@/pages/Objetivos"));
 const Graficos = lazy(() => import("@/pages/Graficos"));
 const Perfil = lazy(() => import("@/pages/Perfil"));
+const Chat = lazy(() => import("@/pages/Chat"));
 
 const queryClient = new QueryClient();
 
@@ -55,6 +56,7 @@ const App = () => {
                 <Route path="/objetivos" element={<Suspense fallback={<div>Carregando...</div>}><Objetivos /></Suspense>} />
                 <Route path="/graficos" element={<Suspense fallback={<div>Carregando...</div>}><Graficos /></Suspense>} />
                 <Route path="/perfil" element={<Suspense fallback={<div>Carregando...</div>}><Perfil /></Suspense>} />
+                <Route path="/chat" element={<Suspense fallback={<div>Carregando...</div>}><Chat /></Suspense>} />
               </Route>
               <Route path="*" element={<NotFound />} />
             </Routes>
