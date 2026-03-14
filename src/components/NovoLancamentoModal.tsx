@@ -18,6 +18,7 @@ import { ReceiptViewer } from '@/components/ReceiptViewer';
 import { useReceipts } from '@/hooks/useReceipts';
 import BrandLogo from '@/components/BrandLogo';
 import { findOrCreateMerchant, uploadMerchantLogoFile } from "@/lib/merchantLogo";
+import { DEFAULT_USER_FEATURE_SETTINGS, readSettingsFromStorage } from "@/lib/userSettings";
 
 type SupabaseLikeError = {
   message?: string;
@@ -77,6 +78,7 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
   const [uploadingManualLogo, setUploadingManualLogo] = useState(false);
   const [cartoes, setCartoes] = useState<Tables<"cartoes">[]>([]);
   const [loading, setLoading] = useState(false);
+  const [featureSettings, setFeatureSettings] = useState(DEFAULT_USER_FEATURE_SETTINGS);
   // Estados para comprovante
   const [receiptPath, setReceiptPath] = useState<string>('');
   const [receiptFileName, setReceiptFileName] = useState<string>('');
@@ -190,6 +192,14 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
       if (data) setCartoes(data);
     });
   }, [user, open]);
+
+  useEffect(() => {
+    if (!user?.id) {
+      setFeatureSettings(DEFAULT_USER_FEATURE_SETTINGS);
+      return;
+    }
+    setFeatureSettings(readSettingsFromStorage(user.id));
+  }, [user?.id]);
 
   // Auto-upload a file shared from an external app (Web Share Target).
   // Only runs when the modal is opened for a new transaction (not editing).
@@ -312,6 +322,41 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
       if (isNaN(valorNum) || valorNum <= 0) throw new Error("Valor inválido");
       const valorEfetivo = valorNum;
       const tipoEfetivo = isReceita ? "receita" : "despesa";
+
+      if (
+        !isReceita
+        && featureSettings.requireReceiptAboveAmount
+        && valorEfetivo >= featureSettings.receiptMinAmount
+        && !receiptPath
+      ) {
+        throw new Error(`Comprovante obrigatório para valores a partir de ${featureSettings.receiptMinAmount.toFixed(2)}.`);
+      }
+
+      if (featureSettings.blockDuplicateTransactions && user?.id) {
+        const dataReferencia = metodoEfetivo === "cartao" ? data : data;
+        let duplicateQuery = supabase
+          .from("lancamentos")
+          .select("id")
+          .eq("usuario_id", user.id)
+          .eq("descricao", descricao)
+          .eq("valor", valorEfetivo)
+          .eq("tipo", tipoEfetivo)
+          .limit(1);
+
+        duplicateQuery = metodoEfetivo === "cartao"
+          ? duplicateQuery.eq("data_compra", dataReferencia)
+          : duplicateQuery.eq("data", dataReferencia);
+
+        if (editItem?.id) {
+          duplicateQuery = duplicateQuery.neq("id", editItem.id);
+        }
+
+        const { data: duplicateRows, error: duplicateError } = await duplicateQuery;
+        if (duplicateError) throw duplicateError;
+        if ((duplicateRows ?? []).length > 0) {
+          throw new Error("Lançamento possivelmente duplicado. Revise os dados antes de salvar.");
+        }
+      }
 
       if (isReceita && fixaEfetiva && usarReservaReceita) {
         throw new Error("Nao e possivel combinar receita fixa com abatimento de reserva.");
@@ -549,7 +594,7 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
             <div className="space-y-2">
               <Label>{metodo === "cartao" ? "Data da Compra" : "Data"}</Label>
               <Input type="date" value={data} onChange={(e) => setData(e.target.value)} required />
-              {metodo === "cartao" && cartaoId && data && (() => {
+              {featureSettings.showInvoicePreview && metodo === "cartao" && cartaoId && data && (() => {
                 const selectedCartao = cartoes.find((c) => c.id === cartaoId);
                 const diaFechamento = selectedCartao?.fechamento ?? 31;
                 const effectiveDate = getEffectiveInvoiceDate(data, diaFechamento);

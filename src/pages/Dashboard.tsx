@@ -25,6 +25,7 @@ import { cn } from "@/lib/utils";
 import { useShareTarget } from "@/hooks/useShareTarget";
 import BrandLogo from "@/components/BrandLogo";
 import Onboarding from "@/components/Onboarding";
+import { DEFAULT_USER_FEATURE_SETTINGS, readSettingsFromStorage } from "@/lib/userSettings";
 
 const getInstallmentBaseDescription = (descricao: string): string => descricao.replace(/ \(\d+\/\d+\)$/, "");
 
@@ -84,6 +85,9 @@ const Dashboard = () => {
   const [receiptRefreshTick, setReceiptRefreshTick] = useState(0);
   const [fixedExpensePaidMap, setFixedExpensePaidMap] = useState<Record<string, boolean>>({});
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [quickFilter, setQuickFilter] = useState<"all" | "com-anexo" | "sem-anexo" | "fixas" | "variaveis">("all");
+  const [featureSettings, setFeatureSettings] = useState(DEFAULT_USER_FEATURE_SETTINGS);
 
   const { sharedFile, clearSharedFile } = useShareTarget();
   const fixedExpenseStorageKey = `${FIXED_EXPENSE_PAID_KEY}${user?.id ?? "anon"}:${mes + 1}:${ano}`;
@@ -103,6 +107,14 @@ const Dashboard = () => {
       setShowOnboarding(true);
     }
   }, []);
+
+  useEffect(() => {
+    if (!user?.id) {
+      setFeatureSettings(DEFAULT_USER_FEATURE_SETTINGS);
+      return;
+    }
+    setFeatureSettings(readSettingsFromStorage(user.id));
+  }, [user?.id]);
 
   const toggleFixedExpensePaid = (lancamentoId: string) => {
     setFixedExpensePaidMap((prev) => {
@@ -176,7 +188,7 @@ const Dashboard = () => {
     const despesas = lancamentos.filter((l) => !isReceitaLancamento(l));
     const totalReceita = receitas.reduce((s, l) => s + Math.abs(l.valor), 0);
     const totalDespesa = despesas
-      .filter((l) => !(l.fixa && !!l.cartao_id))
+      .filter((l) => featureSettings.excludeFixedCardFromTotals ? !(l.fixa && !!l.cartao_id) : true)
       .reduce((s, l) => s + Math.abs(l.valor), 0);
     const fixasReceita = receitas.filter((l) => l.fixa && !l.cartao_id);
     const variaveisReceita = receitas.filter((l) => !l.fixa && !l.cartao_id);
@@ -191,7 +203,7 @@ const Dashboard = () => {
       ? despesas.filter((l) => !!l.cartao_id && !cartaoIds.has(l.cartao_id))
       : [];
     return { totalReceita, totalDespesa, fixasReceita, variaveisReceita, fixasDespesa, fixasCartao, cartaoLanc, variaveis, orfaos };
-  }, [lancamentos, cartoes, cartoesLoaded]);
+  }, [lancamentos, cartoes, cartoesLoaded, featureSettings.excludeFixedCardFromTotals]);
 
   const saldo = stats.totalReceita - stats.totalDespesa;
   const pctGasto = stats.totalReceita > 0
@@ -328,11 +340,36 @@ const Dashboard = () => {
     });
   }, [cartoes, mes, ano]);
 
+  const hasReceipt = (l: Tables<"lancamentos">) => !!getDbComprovanteUrl(l) || !!getLocalReceipt(`${LANCAMENTO_RECEIPT_KEY}${l.id}`);
+
+  const applyDisplayFilters = (items: Tables<"lancamentos">[]) => {
+    const term = searchTerm.trim().toLowerCase();
+    return items.filter((item) => {
+      if (term.length > 0) {
+        const desc = (item.descricao ?? "").toLowerCase();
+        const store = (item.loja ?? "").toLowerCase();
+        if (!desc.includes(term) && !store.includes(term)) return false;
+      }
+
+      if (quickFilter === "com-anexo") return hasReceipt(item);
+      if (quickFilter === "sem-anexo") return !hasReceipt(item);
+      if (quickFilter === "fixas") return !!item.fixa;
+      if (quickFilter === "variaveis") return !item.fixa;
+      return true;
+    });
+  };
+
+  const fixasReceitaView = useMemo(() => applyDisplayFilters(stats.fixasReceita), [stats.fixasReceita, searchTerm, quickFilter]);
+  const variaveisReceitaView = useMemo(() => applyDisplayFilters(stats.variaveisReceita), [stats.variaveisReceita, searchTerm, quickFilter]);
+  const fixasDespesaView = useMemo(() => applyDisplayFilters(stats.fixasDespesa), [stats.fixasDespesa, searchTerm, quickFilter]);
+  const variaveisView = useMemo(() => applyDisplayFilters(stats.variaveis), [stats.variaveis, searchTerm, quickFilter]);
+  const orfaosView = useMemo(() => applyDisplayFilters(stats.orfaos), [stats.orfaos, searchTerm, quickFilter]);
+
   return (
     <div className="mx-auto max-w-lg space-y-5 p-4">
       <MonthSelector mes={mes} ano={ano} onChange={(m, a) => { setMes(m); setAno(a); setExpandedCard(null); }} />
 
-      {closingAlerts.length > 0 && (
+      {featureSettings.notifyCardClosing && closingAlerts.length > 0 && (
         <Card className="border-warning/50 bg-warning/10">
           <CardContent className="p-3">
             <p className="text-sm font-medium text-warning-foreground">
@@ -354,7 +391,7 @@ const Dashboard = () => {
             <span className="text-muted-foreground">{formatCurrency(stats.totalDespesa)} / {formatCurrency(stats.totalReceita)}</span>
           </div>
           <Progress value={pctGasto} className="mt-2 h-2" />
-          {stats.fixasCartao.length > 0 && (
+          {featureSettings.excludeFixedCardFromTotals && stats.fixasCartao.length > 0 && (
             <p className="mt-2 text-[11px] text-muted-foreground">
               Despesas fixas no cartão são exibidas separadamente e não entram neste total.
             </p>
@@ -362,19 +399,55 @@ const Dashboard = () => {
         </CardContent>
       </Card>
 
+      {(featureSettings.enableSearchInicio || featureSettings.enableQuickFiltersInicio) && (
+        <Card>
+          <CardContent className="p-3 space-y-2">
+            {featureSettings.enableSearchInicio && (
+              <Input
+                placeholder="Buscar por descrição ou loja"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            )}
+            {featureSettings.enableQuickFiltersInicio && (
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  { key: "all", label: "Tudo" },
+                  { key: "com-anexo", label: "Com anexo" },
+                  { key: "sem-anexo", label: "Sem anexo" },
+                  { key: "fixas", label: "Fixas" },
+                  { key: "variaveis", label: "Variáveis" },
+                ].map((filter) => (
+                  <button
+                    key={filter.key}
+                    onClick={() => setQuickFilter(filter.key as typeof quickFilter)}
+                    className={cn(
+                      "rounded-full border px-2 py-1 text-[10px]",
+                      quickFilter === filter.key ? "border-primary text-primary" : "border-border text-muted-foreground",
+                    )}
+                  >
+                    {filter.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Entradas Fixas */}
-      {stats.fixasReceita.length > 0 && (
+      {fixasReceitaView.length > 0 && (
         <Section title="Entradas Fixas" icon={<TrendingUp className="h-4 w-4 text-success" />}>
-          {stats.fixasReceita.map((l) => (
+          {fixasReceitaView.map((l) => (
             <LancamentoRow key={l.id} item={l} onClick={() => openEdit(l)} />
           ))}
         </Section>
       )}
 
       {/* Entradas Variaveis */}
-      {stats.variaveisReceita.length > 0 && (
+      {variaveisReceitaView.length > 0 && (
         <Section title="Entradas" icon={<TrendingUp className="h-4 w-4 text-success" />}>
-          {stats.variaveisReceita.map((l) => (
+          {variaveisReceitaView.map((l) => (
             <LancamentoRow key={l.id} item={l} onClick={() => openEdit(l)} />
           ))}
         </Section>
@@ -388,10 +461,10 @@ const Dashboard = () => {
             <TrendingDown className="h-3.5 w-3.5 text-destructive" />
             <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Saídas Fixas</h3>
           </div>
-          {stats.fixasDespesa.length === 0 && (
+          {fixasDespesaView.length === 0 && (
             <p className="text-xs text-muted-foreground">Nenhuma</p>
           )}
-          {stats.fixasDespesa.map((l) => (
+          {fixasDespesaView.map((l) => (
             <MiniLancamentoRow
               key={l.id}
               item={l}
@@ -401,10 +474,10 @@ const Dashboard = () => {
               onReceiptClick={() => { setReceiptLancamento(l); setShowReceiptModal(true); }}
             />
           ))}
-          {stats.fixasDespesa.length > 0 && (
+          {fixasDespesaView.length > 0 && (
             <div className="rounded-lg bg-destructive/10 px-2 py-1.5 text-center">
               <p className="text-xs font-semibold text-destructive">
-                Total: {formatCurrency(stats.fixasDespesa.reduce((s, l) => s + l.valor, 0))}
+                Total: {formatCurrency(fixasDespesaView.reduce((s, l) => s + l.valor, 0))}
               </p>
             </div>
           )}
@@ -632,7 +705,7 @@ const Dashboard = () => {
       })()}
 
       {/* Despesas fixas no cartão (visualização) */}
-      {fixasCartaoGroups.length > 0 && (
+      {featureSettings.showFixedCardExpensesSection && fixasCartaoGroups.length > 0 && (
         <Section title="Despesas Fixas no Cartão" icon={<CreditCard className="h-4 w-4 text-destructive" />}>
           {fixasCartaoGroups.map((group) => (
             <Card key={group.cartao.id} className="border-border/70">
@@ -673,7 +746,7 @@ const Dashboard = () => {
       )}
 
       {/* Despesas órfãs — card expenses with no valid card (ghost expenses) */}
-      {stats.orfaos.length > 0 && (
+      {orfaosView.length > 0 && (
         <div className="rounded-lg border border-destructive/50 bg-destructive/5 p-3 space-y-2">
           <div className="flex items-center gap-2">
             <span className="text-destructive">⚠️</span>
@@ -683,7 +756,7 @@ const Dashboard = () => {
             Estes lançamentos estão afetando o saldo mas não estão vinculados a nenhum cartão. Toque em um para editar ou excluir.
           </p>
           <div className="space-y-2">
-            {stats.orfaos.map((l) => (
+            {orfaosView.map((l) => (
               <LancamentoRow key={l.id} item={l} onClick={() => openEdit(l)} onReceiptClick={() => { setReceiptLancamento(l); setShowReceiptModal(true); }} />
             ))}
           </div>
@@ -691,9 +764,9 @@ const Dashboard = () => {
       )}
 
       {/* Variáveis */}
-      {stats.variaveis.length > 0 && (
+      {variaveisView.length > 0 && (
         <Section title="Variáveis" icon={<ShoppingBag className="h-4 w-4 text-warning" />}>
-          {stats.variaveis.map((l) => (
+          {variaveisView.map((l) => (
             <LancamentoRow key={l.id} item={l} onClick={() => openEdit(l)} onReceiptClick={() => { setReceiptLancamento(l); setShowReceiptModal(true); }} />
           ))}
         </Section>

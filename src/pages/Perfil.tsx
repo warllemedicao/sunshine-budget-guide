@@ -17,6 +17,12 @@ import type { Tables } from "@/integrations/supabase/types";
 import BrandLogo from "@/components/BrandLogo";
 import { getAuthRedirectUrl } from "@/lib/authRedirect";
 import { startGoogleOAuth } from "@/lib/googleOAuth";
+import {
+  type UserFeatureSettings,
+  DEFAULT_USER_FEATURE_SETTINGS,
+  readSettingsFromStorage,
+  writeSettingsToStorage,
+} from "@/lib/userSettings";
 
 const BANK_SUGGESTIONS = [
   "Nubank",
@@ -30,87 +36,6 @@ const BANK_SUGGESTIONS = [
   "Mercado Pago",
   "PagBank",
 ];
-
-type UserFeatureSettings = {
-  autoCategorize: boolean;
-  autoSuggestCard: boolean;
-  enableTemplates: boolean;
-  enablePredictiveSuggestions: boolean;
-  enableSplitTransaction: boolean;
-  showInvoicePreview: boolean;
-  enableRecurringEditScope: boolean;
-  enableAdvancedFilters: boolean;
-  enableQuickFiltersInicio: boolean;
-  enableSearchInicio: boolean;
-  enableBatchActionsInicio: boolean;
-  enableDashboardInsights: boolean;
-  enableCashflowHighlights: boolean;
-  showFixedCardExpensesSection: boolean;
-  excludeFixedCardFromTotals: boolean;
-  blockDuplicateTransactions: boolean;
-  enableUndoAfterActions: boolean;
-  requireReceiptAboveAmount: boolean;
-  receiptMinAmount: number;
-  notifyCardClosing: boolean;
-  notifyCardDue: boolean;
-  notifyAnomalies: boolean;
-  notifyMissingReceipt: boolean;
-  notifyOrphanTransactions: boolean;
-  notifySubscriptionCharges: boolean;
-  notifyImportPendingReview: boolean;
-  enableImportCenter: boolean;
-  enableImportReconciliation: boolean;
-  enableCsvImport: boolean;
-  enableOfxImport: boolean;
-  enableExperimentalFeatures: boolean;
-};
-
-const DEFAULT_USER_FEATURE_SETTINGS: UserFeatureSettings = {
-  autoCategorize: true,
-  autoSuggestCard: true,
-  enableTemplates: false,
-  enablePredictiveSuggestions: false,
-  enableSplitTransaction: false,
-  showInvoicePreview: true,
-  enableRecurringEditScope: false,
-  enableAdvancedFilters: false,
-  enableQuickFiltersInicio: false,
-  enableSearchInicio: true,
-  enableBatchActionsInicio: false,
-  enableDashboardInsights: false,
-  enableCashflowHighlights: false,
-  showFixedCardExpensesSection: true,
-  excludeFixedCardFromTotals: true,
-  blockDuplicateTransactions: false,
-  enableUndoAfterActions: true,
-  requireReceiptAboveAmount: false,
-  receiptMinAmount: 200,
-  notifyCardClosing: true,
-  notifyCardDue: true,
-  notifyAnomalies: false,
-  notifyMissingReceipt: false,
-  notifyOrphanTransactions: true,
-  notifySubscriptionCharges: false,
-  notifyImportPendingReview: false,
-  enableImportCenter: false,
-  enableImportReconciliation: false,
-  enableCsvImport: false,
-  enableOfxImport: false,
-  enableExperimentalFeatures: false,
-};
-
-const getSettingsStorageKey = (userId: string) => `sunshine:settings:${userId}`;
-
-const readSettingsFromStorage = (userId: string): UserFeatureSettings => {
-  try {
-    const raw = localStorage.getItem(getSettingsStorageKey(userId));
-    if (!raw) return DEFAULT_USER_FEATURE_SETTINGS;
-    const parsed = JSON.parse(raw) as Partial<UserFeatureSettings>;
-    return { ...DEFAULT_USER_FEATURE_SETTINGS, ...parsed };
-  } catch {
-    return DEFAULT_USER_FEATURE_SETTINGS;
-  }
-};
 
 const normalizePhoneE164 = (value: string): string | null => {
   const digitsOnly = value.replace(/\D/g, "");
@@ -213,11 +138,7 @@ const Perfil = () => {
   const saveFeatureSettings = (next: UserFeatureSettings) => {
     setFeatureSettings(next);
     if (!user?.id) return;
-    try {
-      localStorage.setItem(getSettingsStorageKey(user.id), JSON.stringify(next));
-    } catch {
-      // ignore localStorage failures
-    }
+    writeSettingsToStorage(user.id, next);
   };
 
   const toggleFeatureSetting = (key: keyof UserFeatureSettings, enabled: boolean) => {
