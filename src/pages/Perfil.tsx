@@ -40,6 +40,13 @@ type UserFeatureSettings = {
   showInvoicePreview: boolean;
   enableRecurringEditScope: boolean;
   enableAdvancedFilters: boolean;
+  enableQuickFiltersInicio: boolean;
+  enableSearchInicio: boolean;
+  enableBatchActionsInicio: boolean;
+  enableDashboardInsights: boolean;
+  enableCashflowHighlights: boolean;
+  showFixedCardExpensesSection: boolean;
+  excludeFixedCardFromTotals: boolean;
   blockDuplicateTransactions: boolean;
   enableUndoAfterActions: boolean;
   requireReceiptAboveAmount: boolean;
@@ -50,7 +57,11 @@ type UserFeatureSettings = {
   notifyMissingReceipt: boolean;
   notifyOrphanTransactions: boolean;
   notifySubscriptionCharges: boolean;
+  notifyImportPendingReview: boolean;
   enableImportCenter: boolean;
+  enableImportReconciliation: boolean;
+  enableCsvImport: boolean;
+  enableOfxImport: boolean;
   enableExperimentalFeatures: boolean;
 };
 
@@ -63,6 +74,13 @@ const DEFAULT_USER_FEATURE_SETTINGS: UserFeatureSettings = {
   showInvoicePreview: true,
   enableRecurringEditScope: false,
   enableAdvancedFilters: false,
+  enableQuickFiltersInicio: false,
+  enableSearchInicio: true,
+  enableBatchActionsInicio: false,
+  enableDashboardInsights: false,
+  enableCashflowHighlights: false,
+  showFixedCardExpensesSection: true,
+  excludeFixedCardFromTotals: true,
   blockDuplicateTransactions: false,
   enableUndoAfterActions: true,
   requireReceiptAboveAmount: false,
@@ -73,7 +91,11 @@ const DEFAULT_USER_FEATURE_SETTINGS: UserFeatureSettings = {
   notifyMissingReceipt: false,
   notifyOrphanTransactions: true,
   notifySubscriptionCharges: false,
+  notifyImportPendingReview: false,
   enableImportCenter: false,
+  enableImportReconciliation: false,
+  enableCsvImport: false,
+  enableOfxImport: false,
   enableExperimentalFeatures: false,
 };
 
@@ -560,6 +582,54 @@ const Perfil = () => {
               </AccordionContent>
             </AccordionItem>
 
+            <AccordionItem value="inicio">
+              <AccordionTrigger>Aba Início (Dashboard)</AccordionTrigger>
+              <AccordionContent className="space-y-3">
+                <SettingToggleRow
+                  title="Busca na aba Início"
+                  description="Permite pesquisar lançamentos por descrição e loja na tela inicial."
+                  checked={featureSettings.enableSearchInicio}
+                  onCheckedChange={(v) => toggleFeatureSetting("enableSearchInicio", v)}
+                />
+                <SettingToggleRow
+                  title="Filtros rápidos no Início"
+                  description="Ativa chips de filtros rápidos (hoje, semana, mês, com/sem anexo)."
+                  checked={featureSettings.enableQuickFiltersInicio}
+                  onCheckedChange={(v) => toggleFeatureSetting("enableQuickFiltersInicio", v)}
+                />
+                <SettingToggleRow
+                  title="Ações em lote"
+                  description="Permite selecionar vários lançamentos para categorizar, excluir ou marcar em lote."
+                  checked={featureSettings.enableBatchActionsInicio}
+                  onCheckedChange={(v) => toggleFeatureSetting("enableBatchActionsInicio", v)}
+                />
+                <SettingToggleRow
+                  title="Insights do dashboard"
+                  description="Exibe cartões com maior gasto, tendências e alertas de variação."
+                  checked={featureSettings.enableDashboardInsights}
+                  onCheckedChange={(v) => toggleFeatureSetting("enableDashboardInsights", v)}
+                />
+                <SettingToggleRow
+                  title="Destaques de fluxo de caixa"
+                  description="Mostra previsões curtas de entradas e saídas para próximos dias."
+                  checked={featureSettings.enableCashflowHighlights}
+                  onCheckedChange={(v) => toggleFeatureSetting("enableCashflowHighlights", v)}
+                />
+                <SettingToggleRow
+                  title="Exibir seção de despesas fixas no cartão"
+                  description="Mostra a seção dedicada para visualizar despesas fixas do cartão."
+                  checked={featureSettings.showFixedCardExpensesSection}
+                  onCheckedChange={(v) => toggleFeatureSetting("showFixedCardExpensesSection", v)}
+                />
+                <SettingToggleRow
+                  title="Excluir fixas do cartão dos totais"
+                  description="Quando ativo, despesas fixas no cartão não entram no saldo/total geral."
+                  checked={featureSettings.excludeFixedCardFromTotals}
+                  onCheckedChange={(v) => toggleFeatureSetting("excludeFixedCardFromTotals", v)}
+                />
+              </AccordionContent>
+            </AccordionItem>
+
             <AccordionItem value="validacao">
               <AccordionTrigger>Validação e segurança</AccordionTrigger>
               <AccordionContent className="space-y-3">
@@ -645,6 +715,12 @@ const Perfil = () => {
                   checked={featureSettings.notifySubscriptionCharges}
                   onCheckedChange={(v) => toggleFeatureSetting("notifySubscriptionCharges", v)}
                 />
+                <SettingToggleRow
+                  title="Avisar importações pendentes de revisão"
+                  description="Notifica quando houver lançamentos importados aguardando conciliação."
+                  checked={featureSettings.notifyImportPendingReview}
+                  onCheckedChange={(v) => toggleFeatureSetting("notifyImportPendingReview", v)}
+                />
               </AccordionContent>
             </AccordionItem>
 
@@ -656,6 +732,24 @@ const Perfil = () => {
                   description="Prepara o app para importação CSV/OFX com conferência automática."
                   checked={featureSettings.enableImportCenter}
                   onCheckedChange={(v) => toggleFeatureSetting("enableImportCenter", v)}
+                />
+                <SettingToggleRow
+                  title="Conciliação automática"
+                  description="Habilita o modo de comparar lançamentos importados com os já existentes."
+                  checked={featureSettings.enableImportReconciliation}
+                  onCheckedChange={(v) => toggleFeatureSetting("enableImportReconciliation", v)}
+                />
+                <SettingToggleRow
+                  title="Importação CSV"
+                  description="Disponibiliza assistente para importar extratos em formato CSV."
+                  checked={featureSettings.enableCsvImport}
+                  onCheckedChange={(v) => toggleFeatureSetting("enableCsvImport", v)}
+                />
+                <SettingToggleRow
+                  title="Importação OFX"
+                  description="Disponibiliza assistente para importar extratos em formato OFX."
+                  checked={featureSettings.enableOfxImport}
+                  onCheckedChange={(v) => toggleFeatureSetting("enableOfxImport", v)}
                 />
                 <SettingToggleRow
                   title="Recursos experimentais"
