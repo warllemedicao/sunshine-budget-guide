@@ -10,12 +10,12 @@ const WHATSAPP_PHONE_NUMBER_ID = Deno.env.get("WHATSAPP_PHONE_NUMBER_ID") ?? "";
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 const categoryMap: Record<string, string[]> = {
-  alimentacao: ["mercado", "padaria", "lanche", "pizza", "restaurante", "ifood", "rappi", "comida"],
-  transporte: ["uber", "99", "combustivel", "gasolina", "onibus", "metro", "pedagio", "estacionamento"],
-  moradia: ["aluguel", "condominio", "agua", "luz", "energia", "internet", "iptu", "gas"],
-  saude: ["farmacia", "medico", "consulta", "exame", "plano de saude", "hospital"],
-  lazer: ["cinema", "netflix", "spotify", "show", "viagem", "jogo", "bar"],
-  educacao: ["curso", "faculdade", "escola", "livro"],
+  alimentacao: ["alimentacao", "alimentação", "mercado", "padaria", "lanche", "pizza", "restaurante", "ifood", "rappi", "comida"],
+  transporte: ["transporte", "uber", "99", "combustivel", "combustível", "gasolina", "onibus", "ônibus", "metro", "metrô", "pedagio", "pedágio", "estacionamento"],
+  moradia: ["moradia", "aluguel", "condominio", "condomínio", "agua", "água", "luz", "energia", "internet", "iptu", "gas"],
+  saude: ["saude", "saúde", "farmacia", "farmácia", "medico", "médico", "consulta", "exame", "plano de saude", "plano de saúde", "hospital"],
+  lazer: ["lazer", "cinema", "netflix", "spotify", "show", "viagem", "jogo", "bar", "streaming"],
+  educacao: ["educacao", "educação", "curso", "faculdade", "escola", "livro"],
   outros: [],
 };
 
@@ -59,6 +59,7 @@ const parseDate = (text: string): string => {
   const lower = text.toLowerCase();
   if (lower.includes("hoje")) return todayIso();
   if (lower.includes("ontem")) return shiftDate(-1);
+  if (lower.includes("anteontem")) return shiftDate(-2);
   if (lower.includes("amanha") || lower.includes("amanhã")) return shiftDate(1);
 
   const m = lower.match(/(\d{1,2})[-/](\d{1,2})(?:[-/](\d{2,4}))?/);
@@ -78,31 +79,66 @@ const parseDate = (text: string): string => {
 };
 
 const parseAmount = (text: string): number | null => {
-  const withoutDate = text.replace(/\d{1,2}[-/]\d{1,2}(?:[-/]\d{2,4})?/, " ");
-  const match = withoutDate.match(/\d{1,3}(?:\.\d{3})*(?:,\d{1,2})|\d+(?:[.,]\d{1,2})?/);
-  if (!match) return null;
+  const withoutDate = text
+    .replace(/\d{1,2}[-/]\d{1,2}(?:[-/]\d{2,4})?/g, " ")
+    .replace(/\b\d+x\b/gi, " ");
 
-  let token = match[0].replace(/\s/g, "");
-  if (token.includes(",")) {
-    token = token.replace(/\./g, "").replace(",", ".");
+  const matches = [...withoutDate.matchAll(/(?:r\$\s*)?(-?\d{1,3}(?:[.\s]\d{3})*(?:,\d{1,2})|-?\d+(?:[.,]\d{1,2})?)(?:\s*(k|mil))?/gi)];
+  if (!matches.length) return null;
+
+  let best: number | null = null;
+  for (const m of matches) {
+    let token = (m[1] ?? "").replace(/\s/g, "");
+    if (!token) continue;
+    if (token.includes(",")) token = token.replace(/\./g, "").replace(",", ".");
+    const parsed = Number(token);
+    if (!Number.isFinite(parsed)) continue;
+    const multiplier = (m[2] ?? "").toLowerCase();
+    const scaled = multiplier === "k" || multiplier === "mil" ? parsed * 1000 : parsed;
+    if (!Number.isFinite(scaled) || Math.abs(scaled) < 0.01) continue;
+    if (best === null || Math.abs(scaled) > Math.abs(best)) best = scaled;
   }
-  const parsed = Number(token);
-  return Number.isFinite(parsed) ? parsed : null;
+  return best === null ? null : Math.abs(best);
 };
 
 const detectTipo = (text: string): "despesa" | "receita" => {
-  const lower = text.toLowerCase();
-  const receitaHints = ["receita", "ganhei", "recebi", "salario", "salário", "pix recebido", "entrada"];
-  return receitaHints.some((k) => lower.includes(k)) ? "receita" : "despesa";
+  const normalizedText = normalize(text);
+  const receitaHints = [
+    "receita", "ganhei", "recebi", "salario", "pix recebido", "entrada", "reembolso", "estorno recebido", "vendi",
+  ];
+  const despesaHints = [
+    "despesa", "paguei", "gastei", "saida", "pix enviado", "transferi", "debito", "débito", "fatura", "comprei",
+  ];
+
+  if (receitaHints.some((k) => normalizedText.includes(normalize(k)))) return "receita";
+  if (despesaHints.some((k) => normalizedText.includes(normalize(k)))) return "despesa";
+  return "despesa";
 };
 
 const detectCategoria = (text: string): string => {
-  const lower = text.toLowerCase();
+  const lower = normalize(text);
+
+  const hashCategory = lower.match(/#([a-z0-9_]+)/i)?.[1];
+  if (hashCategory && Object.prototype.hasOwnProperty.call(categoryMap, hashCategory)) {
+    return hashCategory;
+  }
+
   for (const [categoria, keywords] of Object.entries(categoryMap)) {
-    if (keywords.some((k) => lower.includes(k))) return categoria;
+    if (keywords.some((k) => lower.includes(normalize(k)))) return categoria;
   }
   return "outros";
 };
+
+const cleanTextForDescription = (text: string): string =>
+  text
+    .replace(/\b(?:hoje|ontem|anteontem|amanha|amanhã|hj|ont)\b/gi, " ")
+    .replace(/\d{1,2}[-/]\d{1,2}(?:[-/]\d{2,4})?/g, " ")
+    .replace(/(?:r\$\s*)?\d{1,3}(?:[.\s]\d{3})*(?:,\d{1,2})|(?:r\$\s*)?\d+(?:[.,]\d{1,2})?/g, " ")
+    .replace(/\b\d+x\b/gi, " ")
+    .replace(/[#][a-z0-9_]+/gi, " ")
+    .replace(/\b(?:cart[aã]o|credito|cr[eé]dito|fatura|pix|receita|despesa|entrada|saida|sa[ií]da|ganhei|recebi|paguei|gastei|comprei|valor|de|por|na|no|em|com|usando)\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 
 const detectDescricaoDespesa = (text: string, loja: string | null): string => {
   const lower = text.toLowerCase();
@@ -113,16 +149,7 @@ const detectDescricaoDespesa = (text: string, loja: string | null): string => {
 
   const withoutLeadingArticle = actionSlice.replace(/^\s*(?:um|uma|uns|umas|o|a|os|as)\s+/i, "");
 
-  let candidate = withoutLeadingArticle
-    .replace(/\b(?:na|no|em)\s+[a-z0-9][a-z0-9\s.-]{1,40}/i, " ")
-    .replace(/\b(?:hoje|ontem|amanha|amanhã)\b/gi, " ")
-    .replace(/\b(?:valor\s+de|valor|de|por)\b/gi, " ")
-    .replace(/\b(?:com|usando)\s+o?\s*cart[aã]o\b.*$/i, " ")
-    .replace(/\d{1,2}[-/]\d{1,2}(?:[-/]\d{2,4})?/g, " ")
-    .replace(/\d{1,3}(?:\.\d{3})*(?:,\d{1,2})|\d+(?:[.,]\d{1,2})?/g, " ")
-    .replace(/\b(?:cart[aã]o|cr[eé]dito|fatura)\b/gi, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  let candidate = cleanTextForDescription(withoutLeadingArticle);
 
   if (loja) {
     const lojaNorm = normalize(loja);
@@ -142,14 +169,7 @@ const detectDescricaoReceita = (text: string, loja: string | null): string => {
     /\b(?:recebi|ganhei|entrada|receita)\s+(.*)$/i,
   )?.[1] ?? lower;
 
-  let candidate = actionSlice
-    .replace(/\b(?:na|no|em)\s+[a-z0-9][a-z0-9\s.-]{1,40}/i, " ")
-    .replace(/\b(?:hoje|ontem|amanha|amanhã)\b/gi, " ")
-    .replace(/\b(?:valor\s+de|valor|de|por)\b/gi, " ")
-    .replace(/\d{1,2}[-/]\d{1,2}(?:[-/]\d{2,4})?/g, " ")
-    .replace(/\d{1,3}(?:\.\d{3})*(?:,\d{1,2})|\d+(?:[.,]\d{1,2})?/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  let candidate = cleanTextForDescription(actionSlice);
 
   // Prioriza termos comuns de receita quando presentes na frase.
   const receitaHints = ["salario", "salário", "bico", "extra"];
@@ -197,6 +217,16 @@ const detectLoja = (text: string): string | null => {
 
   if (!candidate) return null;
   return candidate.length > 80 ? candidate.slice(0, 80) : candidate;
+};
+
+const detectFallbackLoja = (text: string): string | null => {
+  const cleaned = cleanTextForDescription(text);
+  if (!cleaned) return null;
+  const parts = cleaned.split(" ").filter(Boolean);
+  if (!parts.length) return null;
+  const maybeStore = parts.slice(0, 3).join(" ").trim();
+  if (!maybeStore) return null;
+  return maybeStore.length > 60 ? maybeStore.slice(0, 60) : maybeStore;
 };
 
 const detectCardId = async (usuarioId: string, text: string): Promise<string | null> => {
@@ -328,7 +358,7 @@ Deno.serve(async (req: Request) => {
 
         await sendWhatsAppText(
           fromRaw ?? "",
-          "Nao consegui identificar o valor. Exemplo: 'mercado 45,90 hoje alimentacao'.",
+          "Nao consegui identificar o valor. Exemplos: 'mercado 45,90 hoje alimentacao' ou 'recebi 1500 salario'.",
         );
         continue;
       }
@@ -337,7 +367,7 @@ Deno.serve(async (req: Request) => {
         ? await detectCardId(linkedUser.usuario_id, textBody)
         : null;
 
-      const lojaDetectada = detectLoja(textBody);
+      const lojaDetectada = detectLoja(textBody) ?? detectFallbackLoja(textBody);
 
       const { data: lancamento, error: insertError } = await supabase
         .from("lancamentos")
@@ -390,7 +420,7 @@ Deno.serve(async (req: Request) => {
 
       await sendWhatsAppText(
         fromRaw ?? "",
-        `Lancamento criado com sucesso: ${parsed.tipo} de R$ ${parsed.valor.toFixed(2).replace(".", ",")} em ${parsed.categoria}${cardId ? " no cartao" : ""}.`,
+        `Lançamento criado: ${parsed.tipo} de R$ ${parsed.valor.toFixed(2).replace(".", ",")} em ${parsed.categoria}${cardId ? " no cartão" : ""}, data ${parsed.data.split("-").reverse().join("/")}.`,
       );
     }
 

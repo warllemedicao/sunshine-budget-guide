@@ -526,10 +526,10 @@ const Dashboard = () => {
       )}
 
       {/* Saldo */}
-      <Card>
-        <CardContent className="p-5">
-          <p className="text-sm text-muted-foreground">Saldo disponível</p>
-          <p className={cn("text-3xl font-bold", saldo >= 0 ? "text-success" : "text-destructive")}>
+      <Card className="overflow-hidden border-border/70 shadow-sm">
+        <CardContent className="p-5 bg-gradient-to-br from-card via-card to-secondary/40">
+          <p className="text-sm font-medium text-muted-foreground">Saldo disponível</p>
+          <p className={cn("text-3xl font-extrabold tracking-tight", saldo >= 0 ? "text-success" : "text-destructive")}>
             {formatCurrency(saldo)}
           </p>
           <div className="mt-3 flex items-center justify-between text-sm">
@@ -546,17 +546,18 @@ const Dashboard = () => {
       </Card>
 
       {(featureSettings.enableSearchInicio || featureSettings.enableQuickFiltersInicio) && (
-        <Card>
+        <Card className="border-border/70 shadow-sm">
           <CardContent className="p-3 space-y-2">
             {featureSettings.enableSearchInicio && (
               <Input
                 placeholder="Buscar por descrição ou loja"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
+                className="rounded-xl border-border/80"
               />
             )}
             {featureSettings.enableQuickFiltersInicio && (
-              <div className="flex flex-wrap gap-1.5">
+              <div className="flex flex-wrap gap-2">
                 {[
                   { key: "all", label: "Tudo" },
                   { key: "com-anexo", label: "Com anexo" },
@@ -568,8 +569,10 @@ const Dashboard = () => {
                     key={filter.key}
                     onClick={() => setQuickFilter(filter.key as typeof quickFilter)}
                     className={cn(
-                      "rounded-full border px-2 py-1 text-[10px]",
-                      quickFilter === filter.key ? "border-primary text-primary" : "border-border text-muted-foreground",
+                      "rounded-full border px-3 py-1.5 text-[11px] font-semibold transition-all",
+                      quickFilter === filter.key
+                        ? "border-primary bg-primary/10 text-primary shadow-sm"
+                        : "border-border text-muted-foreground hover:text-foreground",
                     )}
                   >
                     {filter.label}
