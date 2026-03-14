@@ -685,111 +685,108 @@ const Dashboard = () => {
         </Section>
       )}
 
-      {/* Grid: Saídas Fixas + Cartões lado a lado */}
-      <div className="grid grid-cols-2 gap-3">
-        {/* Saídas Fixas */}
-        <div className="space-y-2">
-          <div className="flex items-center gap-1.5">
-            <TrendingDown className="h-3.5 w-3.5 text-destructive" />
-            <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Saídas Fixas</h3>
-          </div>
-          {fixasDespesaView.length === 0 && (
-            <p className="text-xs text-muted-foreground">Nenhuma</p>
-          )}
-          {fixasDespesaView.map((l) => (
-            <MiniLancamentoRow
-              key={l.id}
-              item={l}
-              isPaid={!!fixedExpensePaidMap[l.id]}
-              onTogglePaid={() => toggleFixedExpensePaid(l.id)}
-              onClick={() => openEdit(l)}
-              onReceiptClick={() => { setReceiptLancamento(l); setShowReceiptModal(true); }}
-            />
-          ))}
-          {fixasDespesaView.length > 0 && (
-            <div className="rounded-lg bg-destructive/10 px-2 py-1.5 text-center">
-              <p className="text-xs font-semibold text-destructive">
-                Total: {formatCurrency(fixasDespesaView.reduce((s, l) => s + l.valor, 0))}
-              </p>
-            </div>
-          )}
+      {/* Saídas Fixas */}
+      <div className="space-y-2">
+        <div className="flex items-center gap-1.5">
+          <TrendingDown className="h-3.5 w-3.5 text-destructive" />
+          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Saídas Fixas</h3>
         </div>
+        {fixasDespesaView.length === 0 && (
+          <p className="text-xs text-muted-foreground">Nenhuma</p>
+        )}
+        {fixasDespesaView.map((l) => (
+          <MiniLancamentoRow
+            key={l.id}
+            item={l}
+            isPaid={!!fixedExpensePaidMap[l.id]}
+            onTogglePaid={() => toggleFixedExpensePaid(l.id)}
+            onClick={() => openEdit(l)}
+            onReceiptClick={() => { setReceiptLancamento(l); setShowReceiptModal(true); }}
+          />
+        ))}
+        {fixasDespesaView.length > 0 && (
+          <div className="rounded-lg bg-destructive/10 px-2 py-1.5 text-center">
+            <p className="text-xs font-semibold text-destructive">
+              Total: {formatCurrency(fixasDespesaView.reduce((s, l) => s + l.valor, 0))}
+            </p>
+          </div>
+        )}
+      </div>
 
-        {/* Cartões resumido */}
-        <div className="space-y-2">
-          <div className="flex items-center gap-1.5">
-            <CreditCard className="h-3.5 w-3.5 text-primary" />
-            <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Cartões</h3>
-          </div>
-          {cartaoGroups.length === 0 && (
-            <p className="text-xs text-muted-foreground">Nenhum cartão</p>
-          )}
-          {lancamentosLoading && cartaoGroups.length === 0 && (
-            <div className="space-y-2">
-              <Skeleton className="h-16 w-full rounded-lg" />
-              <Skeleton className="h-16 w-full rounded-lg" />
-            </div>
-          )}
-          {cartaoGroups.map(({ cartao, total, pago }) => (
-            <button
-              key={cartao.id}
-              onClick={() => setExpandedCard(expandedCard === cartao.id ? null : cartao.id)}
-              className="w-full rounded-lg bg-card border border-border p-2 text-left hover:shadow-sm transition-shadow"
-            >
-              <div className="flex items-center gap-1.5 mb-0.5">
-                <BrandLogo
-                  store={cartao.nome}
-                  initialUrl={cartao.logo_url}
-                  merchantId={cartao.merchant_id}
-                  size={20}
-                  fallbackIcon={<CreditCard className="h-3 w-3 text-primary" />}
-                  fallbackBg="hsl(var(--primary) / 0.1)"
-                />
-                <p className="text-xs font-medium truncate">{cartao.nome}</p>
-              </div>
-              <p className="text-sm font-semibold">{formatCurrency(total)}</p>
-              <div className="flex items-center justify-between mt-1">
-                <span className={cn("text-[10px]", pago ? "text-success" : "text-warning")}>
-                  {pago ? "✓ Pago" : "Pendente"}
-                </span>
-                {!pago && total > 0 && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      // Fechar fatura: criar fatura pendente (mes é 0-based, faturas usam 1-based)
-                      const mesFatura = mes + 1;
-                      const anoFatura = ano;
-                      supabase.from("faturas").insert({
-                        usuario_id: user!.id,
-                        cartao_id: cartao.id,
-                        mes: mesFatura,
-                        ano: anoFatura,
-                        valor_total: total,
-                        status: "pendente"
-                      }).then(({ error }) => {
-                        if (error) {
-                          toast({ title: "Erro ao fechar fatura", description: error.message, variant: "destructive" });
-                        } else {
-                          qc.invalidateQueries({ queryKey: ["faturas"] });
-                          toast({ title: "Fatura fechada!" });
-                        }
-                      });
-                    }}
-                    className="text-[10px] text-primary hover:underline"
-                    title="Fechar fatura pendente"
-                  >
-                    Fechar
-                  </button>
-                )}
-                {expandedCard === cartao.id ? (
-                  <ChevronUp className="h-3 w-3 text-muted-foreground" />
-                ) : (
-                  <ChevronDown className="h-3 w-3 text-muted-foreground" />
-                )}
-              </div>
-            </button>
-          ))}
+      {/* Cartões resumido (abaixo de Saídas Fixas) */}
+      <div className="space-y-2">
+        <div className="flex items-center gap-1.5">
+          <CreditCard className="h-3.5 w-3.5 text-primary" />
+          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Cartões</h3>
         </div>
+        {cartaoGroups.length === 0 && (
+          <p className="text-xs text-muted-foreground">Nenhum cartão</p>
+        )}
+        {lancamentosLoading && cartaoGroups.length === 0 && (
+          <div className="space-y-2">
+            <Skeleton className="h-16 w-full rounded-lg" />
+            <Skeleton className="h-16 w-full rounded-lg" />
+          </div>
+        )}
+        {cartaoGroups.map(({ cartao, total, pago }) => (
+          <button
+            key={cartao.id}
+            onClick={() => setExpandedCard(expandedCard === cartao.id ? null : cartao.id)}
+            className="w-full rounded-lg bg-card border border-border p-2 text-left hover:shadow-sm transition-shadow"
+          >
+            <div className="flex items-center gap-1.5 mb-0.5">
+              <BrandLogo
+                store={cartao.nome}
+                initialUrl={cartao.logo_url}
+                merchantId={cartao.merchant_id}
+                size={20}
+                fallbackIcon={<CreditCard className="h-3 w-3 text-primary" />}
+                fallbackBg="hsl(var(--primary) / 0.1)"
+              />
+              <p className="text-xs font-medium truncate">{cartao.nome}</p>
+            </div>
+            <p className="text-sm font-semibold">{formatCurrency(total)}</p>
+            <div className="flex items-center justify-between mt-1">
+              <span className={cn("text-[10px]", pago ? "text-success" : "text-warning")}>
+                {pago ? "✓ Pago" : "Pendente"}
+              </span>
+              {!pago && total > 0 && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    // Fechar fatura: criar fatura pendente (mes é 0-based, faturas usam 1-based)
+                    const mesFatura = mes + 1;
+                    const anoFatura = ano;
+                    supabase.from("faturas").insert({
+                      usuario_id: user!.id,
+                      cartao_id: cartao.id,
+                      mes: mesFatura,
+                      ano: anoFatura,
+                      valor_total: total,
+                      status: "pendente"
+                    }).then(({ error }) => {
+                      if (error) {
+                        toast({ title: "Erro ao fechar fatura", description: error.message, variant: "destructive" });
+                      } else {
+                        qc.invalidateQueries({ queryKey: ["faturas"] });
+                        toast({ title: "Fatura fechada!" });
+                      }
+                    });
+                  }}
+                  className="text-[10px] text-primary hover:underline"
+                  title="Fechar fatura pendente"
+                >
+                  Fechar
+                </button>
+              )}
+              {expandedCard === cartao.id ? (
+                <ChevronUp className="h-3 w-3 text-muted-foreground" />
+              ) : (
+                <ChevronDown className="h-3 w-3 text-muted-foreground" />
+              )}
+            </div>
+          </button>
+        ))}
       </div>
 
       {/* Fatura expandida - compras do cartão selecionado */}
