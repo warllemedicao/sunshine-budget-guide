@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -8,12 +8,23 @@ import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { formatCurrency } from "@/lib/formatters";
 import { useToast } from "@/hooks/use-toast";
+import { DEFAULT_USER_FEATURE_SETTINGS, readSettingsFromStorage } from "@/lib/userSettings";
 import { TrendingUp, Shield, Hammer, Palmtree, Plus, Trash2, Edit2, Check, X } from "lucide-react";
 
 const Objetivos = () => {
   const { user } = useAuth();
   const { toast } = useToast();
   const qc = useQueryClient();
+  const [featureSettings, setFeatureSettings] = useState(DEFAULT_USER_FEATURE_SETTINGS);
+  const [searchTerm, setSearchTerm] = useState("");
+
+  useEffect(() => {
+    if (!user?.id) {
+      setFeatureSettings(DEFAULT_USER_FEATURE_SETTINGS);
+      return;
+    }
+    setFeatureSettings(readSettingsFromStorage(user.id));
+  }, [user?.id]);
 
   const { data: globais = [] } = useQuery({
     queryKey: ["objetivos_globais", user?.id],
@@ -45,8 +56,23 @@ const Objetivos = () => {
 
   const investimento = globais.find((g) => g.tipo === "investimento");
   const reserva = globais.find((g) => g.tipo === "reserva");
-  const obras = lista.filter((l) => l.tipo === "obra");
-  const lazer = lista.filter((l) => l.tipo === "lazer");
+  const filteredList = useMemo(() => {
+    if (!featureSettings.enableObjetivosSearch || !searchTerm.trim()) return lista;
+    const term = searchTerm.trim().toLowerCase();
+    return lista.filter((l) => (l.nome ?? "").toLowerCase().includes(term));
+  }, [lista, featureSettings.enableObjetivosSearch, searchTerm]);
+
+  const obras = filteredList.filter((l) => l.tipo === "obra");
+  const lazer = filteredList.filter((l) => l.tipo === "lazer");
+
+  const investmentPct = investimento && investimento.valor_meta > 0
+    ? Math.min(100, Math.round((investimento.valor_atual / investimento.valor_meta) * 100))
+    : 0;
+  const reservaPct = reserva && reserva.valor_meta > 0
+    ? Math.min(100, Math.round((reserva.valor_atual / reserva.valor_meta) * 100))
+    : 0;
+  const avgPct = Math.round((investmentPct + reservaPct) / (investimento || reserva ? 2 : 1));
+  const totalPlanejado = (investimento?.valor_meta ?? 0) + (reserva?.valor_meta ?? 0) + obras.reduce((s, o) => s + (o.valor_previsto ?? 0), 0) + lazer.reduce((s, o) => s + (o.valor_previsto ?? 0), 0);
 
   const upsertGlobal = useMutation({
     mutationFn: async (params: { tipo: string; valor_atual: number; valor_meta: number; data_limite?: string }) => {
@@ -100,13 +126,43 @@ const Objetivos = () => {
     <div className="mx-auto max-w-lg space-y-5 p-4">
       <h1 className="text-xl font-bold">Objetivos</h1>
 
+      {featureSettings.enableObjetivosSearch && (
+        <Input
+          placeholder="Buscar objetivo por nome"
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+        />
+      )}
+
+      {featureSettings.enableObjetivosInsights && (
+        <Card>
+          <CardContent className="p-4 grid grid-cols-2 gap-3">
+            <div>
+              <p className="text-xs text-muted-foreground">Progresso médio</p>
+              <p className="text-lg font-semibold">{Number.isFinite(avgPct) ? `${avgPct}%` : "0%"}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Planejado total</p>
+              <p className="text-lg font-semibold">{formatCurrency(totalPlanejado)}</p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Investimento */}
       <GoalCard
         title="Investimentos"
         icon={<TrendingUp className="h-5 w-5 text-success" />}
         data={investimento}
         onSave={(v) => upsertGlobal.mutate({ tipo: "investimento", ...v })}
-        onDelete={investimento ? () => deleteGlobal.mutate("investimento") : undefined}
+        onDelete={investimento ? () => {
+          if (featureSettings.enableObjetivosDeleteConfirm && !window.confirm("Excluir objetivo de Investimentos?")) return;
+          deleteGlobal.mutate("investimento");
+        } : undefined}
+        showProjection={featureSettings.enableObjetivosProjection}
+        highlightCompleted={featureSettings.enableObjetivosHighlightCompleted}
+        enableQuickActions={featureSettings.enableObjetivosQuickActions}
+        enableTimeline={featureSettings.enableObjetivosTimeline}
       />
 
       {/* Reserva */}
@@ -116,6 +172,10 @@ const Objetivos = () => {
         data={reserva}
         onSave={(v) => upsertGlobal.mutate({ tipo: "reserva", ...v })}
         hideMeta
+        showProjection={featureSettings.enableObjetivosProjection}
+        highlightCompleted={featureSettings.enableObjetivosHighlightCompleted}
+        enableQuickActions={featureSettings.enableObjetivosQuickActions}
+        enableTimeline={featureSettings.enableObjetivosTimeline}
       />
 
       {/* Obras */}
@@ -125,7 +185,10 @@ const Objetivos = () => {
         items={obras}
         tipo="obra"
         onAdd={(item) => addListItem.mutate({ tipo: "obra", ...item })}
-        onDelete={(id) => deleteListItem.mutate(id)}
+        onDelete={(id) => {
+          if (featureSettings.enableObjetivosDeleteConfirm && !window.confirm("Excluir item de Obras?")) return;
+          deleteListItem.mutate(id);
+        }}
       />
 
       {/* Lazer */}
@@ -135,7 +198,10 @@ const Objetivos = () => {
         items={lazer}
         tipo="lazer"
         onAdd={(item) => addListItem.mutate({ tipo: "lazer", ...item })}
-        onDelete={(id) => deleteListItem.mutate(id)}
+        onDelete={(id) => {
+          if (featureSettings.enableObjetivosDeleteConfirm && !window.confirm("Excluir item de Lazer?")) return;
+          deleteListItem.mutate(id);
+        }}
       />
     </div>
   );
@@ -148,13 +214,23 @@ interface GoalCardProps {
   onSave: (v: { valor_atual: number; valor_meta: number; data_limite?: string }) => void;
   hideMeta?: boolean;
   onDelete?: () => void;
+  showProjection?: boolean;
+  highlightCompleted?: boolean;
+  enableQuickActions?: boolean;
+  enableTimeline?: boolean;
 }
 
-const GoalCard = ({ title, icon, data, onSave, hideMeta, onDelete }: GoalCardProps) => {
+const GoalCard = ({ title, icon, data, onSave, hideMeta, onDelete, showProjection, highlightCompleted, enableQuickActions, enableTimeline }: GoalCardProps) => {
   const [editing, setEditing] = useState(false);
   const [atual, setAtual] = useState(String(data?.valor_atual ?? 0));
   const [meta, setMeta] = useState(String(data?.valor_meta ?? 0));
   const [dataLimite, setDataLimite] = useState(data?.data_limite ?? "");
+
+  useEffect(() => {
+    setAtual(String(data?.valor_atual ?? 0));
+    setMeta(String(data?.valor_meta ?? 0));
+    setDataLimite(data?.data_limite ?? "");
+  }, [data?.valor_atual, data?.valor_meta, data?.data_limite]);
 
   const pct = data && data.valor_meta > 0 ? Math.min(100, Math.round((data.valor_atual / data.valor_meta) * 100)) : 0;
 
@@ -168,13 +244,21 @@ const GoalCard = ({ title, icon, data, onSave, hideMeta, onDelete }: GoalCardPro
     return falta > 0 ? +(falta / diff).toFixed(2) : 0;
   })();
 
+  const diasRestantes = (() => {
+    if (!data?.data_limite) return null;
+    const now = new Date();
+    const end = new Date(data.data_limite + "T00:00:00");
+    const diffMs = end.getTime() - now.getTime();
+    return Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+  })();
+
   return (
-    <Card className={pct >= 100 ? "ring-2 ring-success" : ""}>
+    <Card className={highlightCompleted && pct >= 100 ? "ring-2 ring-success" : ""}>
       <CardHeader className="flex flex-row items-center gap-3 pb-2">
         {icon}
         <div className="flex flex-1 items-center gap-2 min-w-0">
           <CardTitle className="text-base">{title}</CardTitle>
-          {pct >= 100 && (
+          {highlightCompleted && pct >= 100 && (
             <span className="px-1.5 py-0.5 bg-success text-success-foreground text-[10px] font-medium rounded-full whitespace-nowrap">
               🎉 Meta!
             </span>
@@ -201,6 +285,13 @@ const GoalCard = ({ title, icon, data, onSave, hideMeta, onDelete }: GoalCardPro
             <Button size="sm" onClick={() => { onSave({ valor_atual: +atual, valor_meta: +meta, data_limite: dataLimite || undefined }); setEditing(false); }}>
               <Check className="h-4 w-4 mr-1" /> Salvar
             </Button>
+            {enableQuickActions && (
+              <div className="flex gap-2">
+                <Button size="sm" type="button" variant="outline" onClick={() => setAtual((prev) => String((+prev || 0) + 50))}>+50</Button>
+                <Button size="sm" type="button" variant="outline" onClick={() => setAtual((prev) => String((+prev || 0) + 100))}>+100</Button>
+                <Button size="sm" type="button" variant="outline" onClick={() => setAtual((prev) => String((+prev || 0) + 500))}>+500</Button>
+              </div>
+            )}
           </div>
         ) : (
           <>
@@ -209,9 +300,14 @@ const GoalCard = ({ title, icon, data, onSave, hideMeta, onDelete }: GoalCardPro
               <span className="text-muted-foreground">Meta: {formatCurrency(data?.valor_meta ?? 0)}</span>
             </div>
             <Progress value={pct} className="h-2" />
-            {mesesRestantes !== null && !hideMeta && (
+            {showProjection && mesesRestantes !== null && !hideMeta && (
               <p className="text-xs text-muted-foreground">
                 Faltam {formatCurrency(mesesRestantes)}/mês para atingir a meta
+              </p>
+            )}
+            {enableTimeline && diasRestantes !== null && !hideMeta && (
+              <p className="text-xs text-muted-foreground">
+                {diasRestantes >= 0 ? `${diasRestantes} dia(s) restantes até o prazo` : "Prazo expirado"}
               </p>
             )}
           </>

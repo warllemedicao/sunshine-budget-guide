@@ -680,6 +680,60 @@ const Perfil = () => {
                 />
               </AccordionContent>
             </AccordionItem>
+
+            <AccordionItem value="objetivos">
+              <AccordionTrigger>Aba Objetivos</AccordionTrigger>
+              <AccordionContent className="space-y-3">
+                <SettingToggleRow
+                  title="Busca em Objetivos"
+                  description="Permite pesquisar metas e itens por nome na aba Objetivos."
+                  checked={featureSettings.enableObjetivosSearch}
+                  onCheckedChange={(v) => toggleFeatureSetting("enableObjetivosSearch", v)}
+                />
+                <SettingToggleRow
+                  title="Insights de metas"
+                  description="Exibe cartões com percentual médio e valor total planejado."
+                  checked={featureSettings.enableObjetivosInsights}
+                  onCheckedChange={(v) => toggleFeatureSetting("enableObjetivosInsights", v)}
+                />
+                <SettingToggleRow
+                  title="Projeção mensal da meta"
+                  description="Mostra quanto falta por mês para alcançar a meta no prazo."
+                  checked={featureSettings.enableObjetivosProjection}
+                  onCheckedChange={(v) => toggleFeatureSetting("enableObjetivosProjection", v)}
+                />
+                <SettingToggleRow
+                  title="Confirmação ao excluir"
+                  description="Solicita confirmação antes de remover objetivos ou itens."
+                  checked={featureSettings.enableObjetivosDeleteConfirm}
+                  onCheckedChange={(v) => toggleFeatureSetting("enableObjetivosDeleteConfirm", v)}
+                />
+                <SettingToggleRow
+                  title="Destacar metas concluídas"
+                  description="Aplica destaque visual quando a meta já foi atingida."
+                  checked={featureSettings.enableObjetivosHighlightCompleted}
+                  onCheckedChange={(v) => toggleFeatureSetting("enableObjetivosHighlightCompleted", v)}
+                />
+                <SettingToggleRow
+                  title="Ações rápidas"
+                  description="Exibe botões de incremento rápido no valor atual das metas."
+                  checked={featureSettings.enableObjetivosQuickActions}
+                  onCheckedChange={(v) => toggleFeatureSetting("enableObjetivosQuickActions", v)}
+                />
+                <SettingToggleRow
+                  title="Cálculo automático de percentual"
+                  description="Atualiza automaticamente indicadores de progresso e resumo."
+                  checked={featureSettings.enableObjetivosAutoCalc}
+                  onCheckedChange={(v) => toggleFeatureSetting("enableObjetivosAutoCalc", v)}
+                />
+                <SettingToggleRow
+                  title="Exibir linha do tempo"
+                  description="Mostra dias restantes para data limite das metas com prazo."
+                  checked={featureSettings.enableObjetivosTimeline}
+                  onCheckedChange={(v) => toggleFeatureSetting("enableObjetivosTimeline", v)}
+                />
+              </AccordionContent>
+            </AccordionItem>
           </Accordion>
 
           <div className="flex justify-end">

@@ -29,6 +29,14 @@ export type UserFeatureSettings = {
   enableImportReconciliation: boolean;
   enableCsvImport: boolean;
   enableOfxImport: boolean;
+  enableObjetivosSearch: boolean;
+  enableObjetivosInsights: boolean;
+  enableObjetivosProjection: boolean;
+  enableObjetivosDeleteConfirm: boolean;
+  enableObjetivosHighlightCompleted: boolean;
+  enableObjetivosQuickActions: boolean;
+  enableObjetivosAutoCalc: boolean;
+  enableObjetivosTimeline: boolean;
   enableExperimentalFeatures: boolean;
 };
 
@@ -63,6 +71,14 @@ export const DEFAULT_USER_FEATURE_SETTINGS: UserFeatureSettings = {
   enableImportReconciliation: false,
   enableCsvImport: false,
   enableOfxImport: false,
+  enableObjetivosSearch: false,
+  enableObjetivosInsights: true,
+  enableObjetivosProjection: true,
+  enableObjetivosDeleteConfirm: true,
+  enableObjetivosHighlightCompleted: true,
+  enableObjetivosQuickActions: false,
+  enableObjetivosAutoCalc: true,
+  enableObjetivosTimeline: true,
   enableExperimentalFeatures: false,
 };
 
