@@ -118,3 +118,17 @@ export const writeSettingsToStorage = (userId: string, settings: UserFeatureSett
     // ignore localStorage failures
   }
 };
+
+// --- Google First-Access Wizard state (stored in localStorage) ---
+const GOOGLE_WIZARD_KEY = (uid: string) => `sunshine:wizard:google:${uid}`;
+
+export const hasCompletedGoogleWizard = (userId: string): boolean =>
+  !!localStorage.getItem(GOOGLE_WIZARD_KEY(userId));
+
+export const markGoogleWizardComplete = (userId: string): void => {
+  try {
+    localStorage.setItem(GOOGLE_WIZARD_KEY(userId), "true");
+  } catch {
+    // ignore
+  }
+};

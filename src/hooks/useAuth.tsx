@@ -1,8 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState, ReactNode } from "react";
 import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
-import { DEFAULT_USER_FEATURE_SETTINGS, readSettingsFromStorage } from "@/lib/userSettings";
-import { hasCompletedGoogleWizard } from "@/components/GoogleFirstAccessWizard";
+import { DEFAULT_USER_FEATURE_SETTINGS, readSettingsFromStorage, hasCompletedGoogleWizard } from "@/lib/userSettings";
 
 const UNLOCK_SESSION_KEY = "app_session_unlocked";
 

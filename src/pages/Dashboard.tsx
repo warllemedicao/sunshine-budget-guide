@@ -26,8 +26,8 @@ import { cn } from "@/lib/utils";
 import { useShareTarget } from "@/hooks/useShareTarget";
 import BrandLogo from "@/components/BrandLogo";
 import Onboarding from "@/components/Onboarding";
-import GoogleFirstAccessWizard, { hasCompletedGoogleWizard } from "@/components/GoogleFirstAccessWizard";
-import { DEFAULT_USER_FEATURE_SETTINGS, readSettingsFromStorage } from "@/lib/userSettings";
+import GoogleFirstAccessWizard from "@/components/GoogleFirstAccessWizard";
+import { DEFAULT_USER_FEATURE_SETTINGS, readSettingsFromStorage, hasCompletedGoogleWizard } from "@/lib/userSettings";
 
 const getInstallmentBaseDescription = (descricao: string): string => descricao.replace(/ \(\d+\/\d+\)$/, "");
 
@@ -118,7 +118,13 @@ const Dashboard = () => {
     const isGoogleUser =
       user.app_metadata?.provider === "google" ||
       (Array.isArray(user.app_metadata?.providers) && user.app_metadata.providers.includes("google"));
-    if (isGoogleUser && !hasCompletedGoogleWizard(user.id)) {
+    if (!isGoogleUser) return;
+    if (hasCompletedGoogleWizard(user.id)) return;
+    // Só exibe o wizard para contas criadas nas últimas 24 horas (novos cadastros).
+    // Usuários antigos que nunca viram o wizard não serão interrompidos.
+    const createdAt = user.created_at ? new Date(user.created_at).getTime() : 0;
+    const isNewUser = Date.now() - createdAt < 24 * 60 * 60 * 1000;
+    if (isNewUser) {
       setShowGoogleWizard(true);
     }
   }, [user?.id]);

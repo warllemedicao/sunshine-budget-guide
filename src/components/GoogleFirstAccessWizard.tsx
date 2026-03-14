@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { markGoogleWizardComplete } from "@/lib/userSettings";
 
 interface Props {
   userId: string;
@@ -12,11 +13,6 @@ interface Props {
   open: boolean;
   onComplete: () => void;
 }
-
-const WIZARD_KEY = (uid: string) => `sunshine:wizard:google:${uid}`;
-
-export const hasCompletedGoogleWizard = (userId: string) =>
-  !!localStorage.getItem(WIZARD_KEY(userId));
 
 const GoogleFirstAccessWizard = ({ userId, userEmail, open, onComplete }: Props) => {
   const { toast } = useToast();
@@ -56,7 +52,7 @@ const GoogleFirstAccessWizard = ({ userId, userEmail, open, onComplete }: Props)
   };
 
   const handleComplete = () => {
-    localStorage.setItem(WIZARD_KEY(userId), "true");
+    markGoogleWizardComplete(userId);
     onComplete();
   };
 
