@@ -313,8 +313,9 @@ const Perfil = () => {
               <Check className="h-4 w-4 mr-1" /> Salvar
             </Button>
 
-            <div className="border-t border-border pt-3 space-y-2">
-              <p className="text-sm font-medium">Seguranca da Conta</p>
+            {featureSettings.showSecuritySection && (
+              <div className="border-t border-border pt-3 space-y-2">
+                <p className="text-sm font-medium">Seguranca da Conta</p>
               {!isGoogleSession && (
                 <p className="text-xs text-muted-foreground">Conecte sua conta Google para salvar comprovantes na sua nuvem.</p>
               )}
@@ -362,7 +363,16 @@ const Perfil = () => {
                 {salvandoSenha ? "Salvando senha..." : "Salvar senha"}
               </Button>
 
-              <div className="border-t border-border pt-3 space-y-2">
+                {featureSettings.requirePasswordForGoogle && isGoogleSession && (
+                  <p className="text-xs text-muted-foreground">
+                    Com esta opção ativa, contas Google também pedem senha no desbloqueio do app.
+                  </p>
+                )}
+              </div>
+            )}
+
+              {featureSettings.showWhatsAppSection && (
+                <div className="border-t border-border pt-3 space-y-2">
                 <p className="text-sm font-medium">Sincronizacao WhatsApp</p>
                 <p className="text-xs text-muted-foreground">
                   Salve o numero que enviara mensagens para o bot (ex.: +55 11 99999-0000).
@@ -392,11 +402,29 @@ const Perfil = () => {
                 <p className="text-xs text-muted-foreground">
                   Exemplo de mensagem: "mercado 45,90 hoje alimentacao".
                 </p>
-              </div>
-            </div>
+                </div>
+              )}
           </CardContent>
         )}
       </Card>
+
+      {featureSettings.showConnectedServicesCard && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Serviços conectados</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            <div className="flex items-center justify-between">
+              <span>Google Drive</span>
+              <span className={isGoogleSession ? "text-success" : "text-muted-foreground"}>{isGoogleSession ? "Conectado" : "Desconectado"}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span>WhatsApp</span>
+              <span className={whatsappLink?.ativo ? "text-success" : "text-muted-foreground"}>{whatsappLink?.ativo ? "Conectado" : "Desconectado"}</span>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader className="flex flex-row items-center gap-3 pb-2">
@@ -409,6 +437,12 @@ const Perfil = () => {
           <div className="rounded-md bg-secondary/50 p-3 text-xs text-muted-foreground">
             Ative ou desative recursos por categoria. As preferências são salvas por usuário neste dispositivo.
           </div>
+
+          {featureSettings.showProfileTips && (
+            <div className="rounded-md border border-border p-3 text-xs text-muted-foreground">
+              Dica: para contas Google, defina uma senha de acesso para desbloquear o app com mais segurança.
+            </div>
+          )}
 
           <Accordion type="multiple" className="w-full">
             <AccordionItem value="aparencia">
@@ -731,6 +765,54 @@ const Perfil = () => {
                   description="Mostra dias restantes para data limite das metas com prazo."
                   checked={featureSettings.enableObjetivosTimeline}
                   onCheckedChange={(v) => toggleFeatureSetting("enableObjetivosTimeline", v)}
+                />
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="perfil-seguranca">
+              <AccordionTrigger>Perfil e Segurança</AccordionTrigger>
+              <AccordionContent className="space-y-3">
+                <SettingToggleRow
+                  title="Habilitar bloqueio do app"
+                  description="Quando ativo, o app pede desbloqueio por senha/digital ao abrir."
+                  checked={featureSettings.enableAppLock}
+                  onCheckedChange={(v) => toggleFeatureSetting("enableAppLock", v)}
+                />
+                <SettingToggleRow
+                  title="Exigir senha para contas Google"
+                  description="Após login com Google, o desbloqueio passa a exigir senha de acesso."
+                  checked={featureSettings.requirePasswordForGoogle}
+                  onCheckedChange={(v) => toggleFeatureSetting("requirePasswordForGoogle", v)}
+                />
+                <SettingToggleRow
+                  title="Permitir desbloqueio com biometria"
+                  description="Libera opção de digital/biometria na tela de desbloqueio."
+                  checked={featureSettings.allowBiometricUnlock}
+                  onCheckedChange={(v) => toggleFeatureSetting("allowBiometricUnlock", v)}
+                />
+                <SettingToggleRow
+                  title="Mostrar bloco de segurança"
+                  description="Exibe seção de segurança da conta ao editar perfil."
+                  checked={featureSettings.showSecuritySection}
+                  onCheckedChange={(v) => toggleFeatureSetting("showSecuritySection", v)}
+                />
+                <SettingToggleRow
+                  title="Mostrar seção WhatsApp"
+                  description="Exibe configuração de sincronização via WhatsApp no Perfil."
+                  checked={featureSettings.showWhatsAppSection}
+                  onCheckedChange={(v) => toggleFeatureSetting("showWhatsAppSection", v)}
+                />
+                <SettingToggleRow
+                  title="Mostrar status de serviços conectados"
+                  description="Exibe card com status de Google e WhatsApp conectados."
+                  checked={featureSettings.showConnectedServicesCard}
+                  onCheckedChange={(v) => toggleFeatureSetting("showConnectedServicesCard", v)}
+                />
+                <SettingToggleRow
+                  title="Mostrar dicas de perfil"
+                  description="Exibe dicas rápidas de segurança e configuração no Perfil."
+                  checked={featureSettings.showProfileTips}
+                  onCheckedChange={(v) => toggleFeatureSetting("showProfileTips", v)}
                 />
               </AccordionContent>
             </AccordionItem>

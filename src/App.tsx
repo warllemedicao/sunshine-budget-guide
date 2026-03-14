@@ -23,10 +23,10 @@ const Perfil = lazy(() => import("@/pages/Perfil"));
 const queryClient = new QueryClient();
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
-  const { user, loading, locked, unlock } = useAuth();
+  const { user, loading, locked, unlock, passwordOnlyLock, allowBiometricUnlock } = useAuth();
   if (loading) return null;
   if (!user) return <Navigate to="/auth" replace />;
-  if (locked) return <AppLockScreen userEmail={user.email ?? ""} onUnlock={unlock} />;
+  if (locked) return <AppLockScreen userEmail={user.email ?? ""} onUnlock={unlock} passwordOnly={passwordOnlyLock} allowBiometricUnlock={allowBiometricUnlock} />;
   return <>{children}</>;
 };
 

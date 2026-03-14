@@ -10,6 +10,8 @@ import { Fingerprint, Lock, Mail } from "lucide-react";
 interface AppLockScreenProps {
   userEmail: string;
   onUnlock: () => void;
+  passwordOnly?: boolean;
+  allowBiometricUnlock?: boolean;
 }
 
 const BIOMETRIC_CREDENTIAL_KEY = "app_biometric_credential_id";
@@ -36,7 +38,7 @@ const isBiometricSupported = (): boolean =>
   !!window.PublicKeyCredential &&
   !!navigator.credentials;
 
-const AppLockScreen = ({ userEmail, onUnlock }: AppLockScreenProps) => {
+const AppLockScreen = ({ userEmail, onUnlock, passwordOnly = false, allowBiometricUnlock = true }: AppLockScreenProps) => {
   const { toast } = useToast();
   const [mode, setMode] = useState<"biometric" | "password" | "recovery">("biometric");
   const [password, setPassword] = useState("");
@@ -49,12 +51,12 @@ const AppLockScreen = ({ userEmail, onUnlock }: AppLockScreenProps) => {
 
   useEffect(() => {
     const stored = localStorage.getItem(BIOMETRIC_CREDENTIAL_KEY);
-    setHasBiometric(!!stored && isBiometricSupported());
-    // If biometric not registered or not supported, go straight to password
-    if (!stored || !isBiometricSupported()) {
+    const canUseBiometric = !passwordOnly && allowBiometricUnlock && isBiometricSupported();
+    setHasBiometric(!!stored && canUseBiometric);
+    if (!stored || !canUseBiometric) {
       setMode("password");
     }
-  }, []);
+  }, [passwordOnly, allowBiometricUnlock]);
 
   const handleBiometricAuth = async () => {
     setLoading(true);
@@ -205,7 +207,7 @@ const AppLockScreen = ({ userEmail, onUnlock }: AppLockScreenProps) => {
         </CardHeader>
 
         <CardContent className="space-y-4">
-          {mode === "biometric" && (
+          {mode === "biometric" && !passwordOnly && allowBiometricUnlock && (
             <div className="flex flex-col items-center gap-4">
               <Button
                 className="w-full gap-2"
@@ -245,7 +247,7 @@ const AppLockScreen = ({ userEmail, onUnlock }: AppLockScreenProps) => {
                 {loading ? "Verificando..." : "Entrar"}
               </Button>
               <div className="flex flex-col gap-2 items-center">
-                {hasBiometric && (
+                {hasBiometric && !passwordOnly && allowBiometricUnlock && (
                   <button
                     type="button"
                     onClick={() => setMode("biometric")}
@@ -254,7 +256,7 @@ const AppLockScreen = ({ userEmail, onUnlock }: AppLockScreenProps) => {
                     <Fingerprint className="h-4 w-4" /> Usar digital
                   </button>
                 )}
-                {isBiometricSupported() && !hasBiometric && (
+                {isBiometricSupported() && !hasBiometric && !passwordOnly && allowBiometricUnlock && (
                   <button
                     type="button"
                     onClick={handleRegisterBiometric}

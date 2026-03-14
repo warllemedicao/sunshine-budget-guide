@@ -37,6 +37,13 @@ export type UserFeatureSettings = {
   enableObjetivosQuickActions: boolean;
   enableObjetivosAutoCalc: boolean;
   enableObjetivosTimeline: boolean;
+  enableAppLock: boolean;
+  requirePasswordForGoogle: boolean;
+  allowBiometricUnlock: boolean;
+  showSecuritySection: boolean;
+  showWhatsAppSection: boolean;
+  showConnectedServicesCard: boolean;
+  showProfileTips: boolean;
   enableExperimentalFeatures: boolean;
 };
 
@@ -79,6 +86,13 @@ export const DEFAULT_USER_FEATURE_SETTINGS: UserFeatureSettings = {
   enableObjetivosQuickActions: false,
   enableObjetivosAutoCalc: true,
   enableObjetivosTimeline: true,
+  enableAppLock: true,
+  requirePasswordForGoogle: true,
+  allowBiometricUnlock: true,
+  showSecuritySection: true,
+  showWhatsAppSection: true,
+  showConnectedServicesCard: true,
+  showProfileTips: true,
   enableExperimentalFeatures: false,
 };
 
