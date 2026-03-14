@@ -709,89 +709,130 @@ const Dashboard = () => {
         </Section>
       )}
 
-      {/* Saídas Fixas (À vista + Cartões em sequência) */}
-      <div className="space-y-3">
-        <div className="flex items-center gap-2">
-          <TrendingDown className="h-4 w-4 text-destructive" />
-          <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Saídas Fixas</h3>
+      {/* Bloco compacto: Saídas/Despesas fixas (esquerda) + Faturas (direita) */}
+      <div className="grid grid-cols-2 gap-2.5">
+        <div className="space-y-2.5">
+          <div className="flex items-center gap-1.5">
+            <TrendingDown className="h-3.5 w-3.5 text-destructive" />
+            <h3 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Saídas Fixas</h3>
+          </div>
+
+          <Card className="border-border/70 shadow-sm">
+            <CardContent className="p-2.5 space-y-1.5">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">À vista</p>
+              {fixasDespesaView.length === 0 && (
+                <p className="text-[11px] text-muted-foreground">Nenhuma.</p>
+              )}
+              {fixasDespesaView.map((l) => (
+                <MiniLancamentoRow
+                  key={l.id}
+                  item={l}
+                  isPaid={!!fixedExpensePaidMap[l.id]}
+                  onTogglePaid={() => toggleFixedExpensePaid(l.id)}
+                  onClick={() => openEdit(l)}
+                  onReceiptClick={() => { setReceiptLancamento(l); setShowReceiptModal(true); }}
+                />
+              ))}
+              {fixasDespesaView.length > 0 && (
+                <div className="rounded-md bg-destructive/10 px-2 py-1.5 text-center">
+                  <p className="text-[10px] font-semibold text-destructive">
+                    {formatCurrency(fixasDespesaView.reduce((s, l) => s + l.valor, 0))}
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {featureSettings.showFixedCardExpensesSection && (
+            <Card className="border-border/70 shadow-sm">
+              <CardContent className="p-2.5 space-y-1.5">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Despesas fixas no cartão</p>
+                {fixasCartaoGroups.length === 0 && (
+                  <p className="text-[11px] text-muted-foreground">Nenhuma.</p>
+                )}
+                {fixasCartaoGroups.map((group) => (
+                  <div key={group.cartao.id} className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <p className="text-[10px] font-semibold truncate">{group.cartao.nome}</p>
+                      <span className={cn("text-[10px]", group.pago ? "text-success" : "text-destructive")}>
+                        {group.pago ? "Pago" : "Pendente"}
+                      </span>
+                    </div>
+                    <div className="space-y-1">
+                      {group.itens.map((item) => (
+                        <FixedCardExpenseRow
+                          key={item.id}
+                          item={item}
+                          paid={group.pago}
+                          onEdit={() => openEdit(item)}
+                          onDelete={() => deleteLancamento.mutate(item)}
+                          onReceiptClick={() => { setReceiptLancamento(item); setShowReceiptModal(true); }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
         </div>
 
-        <Card className="border-border/70 shadow-sm">
-          <CardContent className="p-3 space-y-2">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">À vista</p>
-            {fixasDespesaView.length === 0 && (
-              <p className="text-xs text-muted-foreground">Nenhuma saída fixa à vista neste mês.</p>
-            )}
-            {fixasDespesaView.map((l) => (
-              <MiniLancamentoRow
-                key={l.id}
-                item={l}
-                isPaid={!!fixedExpensePaidMap[l.id]}
-                onTogglePaid={() => toggleFixedExpensePaid(l.id)}
-                onClick={() => openEdit(l)}
-                onReceiptClick={() => { setReceiptLancamento(l); setShowReceiptModal(true); }}
-              />
-            ))}
-            {fixasDespesaView.length > 0 && (
-              <div className="rounded-lg bg-destructive/10 px-3 py-2 text-center">
-                <p className="text-xs font-semibold text-destructive">
-                  Total à vista: {formatCurrency(fixasDespesaView.reduce((s, l) => s + l.valor, 0))}
-                </p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        <div className="space-y-2.5">
+          <div className="flex items-center gap-1.5">
+            <CreditCard className="h-3.5 w-3.5 text-primary" />
+            <h3 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Faturas</h3>
+          </div>
 
-        <Card className="border-border/70 shadow-sm">
-          <CardContent className="p-3 space-y-2">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">No cartão</p>
-            {cartaoGroups.length === 0 && (
-              <p className="text-xs text-muted-foreground">Nenhum cartão encontrado.</p>
-            )}
-            {lancamentosLoading && cartaoGroups.length === 0 && (
-              <div className="space-y-2">
-                <Skeleton className="h-16 w-full rounded-lg" />
-                <Skeleton className="h-16 w-full rounded-lg" />
-              </div>
-            )}
+          <Card className="border-border/70 shadow-sm">
+            <CardContent className="p-2.5 space-y-1.5">
+              {cartaoGroups.length === 0 && (
+                <p className="text-[11px] text-muted-foreground">Nenhum cartão.</p>
+              )}
+              {lancamentosLoading && cartaoGroups.length === 0 && (
+                <div className="space-y-2">
+                  <Skeleton className="h-14 w-full rounded-lg" />
+                  <Skeleton className="h-14 w-full rounded-lg" />
+                </div>
+              )}
 
-            {cartaoGroups.map(({ cartao, total, pago }) => (
-              <button
-                key={cartao.id}
-                onClick={() => setExpandedCard(cartao.id)}
-                className="w-full rounded-xl bg-card border border-border p-3 text-left transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
-              >
-                <div className="flex items-center gap-2">
-                  <BrandLogo
-                    store={cartao.nome}
-                    initialUrl={cartao.logo_url}
-                    merchantId={cartao.merchant_id}
-                    size={24}
-                    fallbackIcon={<CreditCard className="h-4 w-4 text-primary" />}
-                    fallbackBg="hsl(var(--primary) / 0.1)"
-                  />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold truncate">{cartao.nome}</p>
-                    <p className="text-[11px] text-muted-foreground">Fatura fecha dia {cartao.fechamento} • vence dia {cartao.vencimento}</p>
+              {cartaoGroups.map(({ cartao, total, pago }) => (
+                <button
+                  key={cartao.id}
+                  onClick={() => setExpandedCard(cartao.id)}
+                  className="w-full rounded-lg bg-card border border-border px-2 py-2 text-left transition-all duration-150 hover:shadow"
+                >
+                  <div className="flex items-center gap-1.5">
+                    <BrandLogo
+                      store={cartao.nome}
+                      initialUrl={cartao.logo_url}
+                      merchantId={cartao.merchant_id}
+                      size={18}
+                      fallbackIcon={<CreditCard className="h-3 w-3 text-primary" />}
+                      fallbackBg="hsl(var(--primary) / 0.1)"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[11px] font-semibold truncate">{cartao.nome}</p>
+                      <p className="text-[10px] text-muted-foreground">Fech {cartao.fechamento} • Venc {cartao.vencimento}</p>
+                    </div>
+                    <span className={cn(
+                      "text-[10px] px-1.5 py-0.5 rounded-full font-semibold",
+                      pago ? "bg-success/10 text-success" : "bg-warning/10 text-warning"
+                    )}>
+                      {pago ? "Pago" : "Pend"}
+                    </span>
                   </div>
-                  <span className={cn(
-                    "text-[11px] px-2 py-1 rounded-full font-semibold",
-                    pago ? "bg-success/10 text-success" : "bg-warning/10 text-warning"
-                  )}>
-                    {pago ? "Pago" : "Pendente"}
-                  </span>
-                </div>
-                <div className="mt-2 flex items-center justify-between">
-                  <p className="text-base font-bold">{formatCurrency(total)}</p>
-                  <span className="inline-flex items-center gap-1 text-xs font-medium text-primary">
-                    <Eye className="h-3.5 w-3.5" />
-                    Abrir fatura
-                  </span>
-                </div>
-              </button>
-            ))}
-          </CardContent>
-        </Card>
+                  <div className="mt-1.5 flex items-center justify-between">
+                    <p className="text-[12px] font-bold">{formatCurrency(total)}</p>
+                    <span className="inline-flex items-center gap-1 text-[10px] font-medium text-primary">
+                      <Eye className="h-3 w-3" />
+                      Abrir
+                    </span>
+                  </div>
+                </button>
+              ))}
+            </CardContent>
+          </Card>
+        </div>
       </div>
 
       {/* Fatura em popup sobreposto */}
@@ -947,46 +988,7 @@ const Dashboard = () => {
         );
       })()}
 
-      {/* Despesas fixas no cartão (visualização) */}
-      {featureSettings.showFixedCardExpensesSection && fixasCartaoGroups.length > 0 && (
-        <Section title="Despesas Fixas no Cartão" icon={<CreditCard className="h-4 w-4 text-destructive" />}>
-          {fixasCartaoGroups.map((group) => (
-            <Card key={group.cartao.id} className="border-border/70">
-              <CardContent className="p-3 space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <BrandLogo
-                      store={group.cartao.nome}
-                      initialUrl={group.cartao.logo_url}
-                      merchantId={group.cartao.merchant_id}
-                      size={22}
-                      fallbackIcon={<CreditCard className="h-3.5 w-3.5 text-primary" />}
-                      fallbackBg="hsl(var(--primary) / 0.1)"
-                    />
-                    <p className="text-xs font-semibold truncate">{group.cartao.nome}</p>
-                  </div>
-                  <span className={cn("text-[10px] font-medium", group.pago ? "text-success" : "text-destructive")}> 
-                    {group.pago ? "Pago" : "Pendente"}
-                  </span>
-                </div>
-
-                <div className="space-y-1.5">
-                  {group.itens.map((item) => (
-                    <FixedCardExpenseRow
-                      key={item.id}
-                      item={item}
-                      paid={group.pago}
-                      onEdit={() => openEdit(item)}
-                      onDelete={() => deleteLancamento.mutate(item)}
-                      onReceiptClick={() => { setReceiptLancamento(item); setShowReceiptModal(true); }}
-                    />
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </Section>
-      )}
+      {/* Despesas fixas no cartão agora estão no bloco compacto ao lado das faturas */}
 
       {/* Despesas órfãs — card expenses with no valid card (ghost expenses) */}
       {featureSettings.notifyOrphanTransactions && orfaosView.length > 0 && (
