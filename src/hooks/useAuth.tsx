@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useRef, useState, ReactNode } fro
 import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { DEFAULT_USER_FEATURE_SETTINGS, readSettingsFromStorage } from "@/lib/userSettings";
+import { hasCompletedGoogleWizard } from "@/components/GoogleFirstAccessWizard";
 
 const UNLOCK_SESSION_KEY = "app_session_unlocked";
 
@@ -45,14 +46,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
 
     const settings = readSettingsFromStorage(session.user.id);
-    const isGoogleSession = session.user.app_metadata?.provider === "google"
-      || Array.isArray(session.user.app_metadata?.providers)
-      && session.user.app_metadata.providers.includes("google");
+    const isGoogleSession =
+      session.user.app_metadata?.provider === "google" ||
+      (Array.isArray(session.user.app_metadata?.providers) &&
+        session.user.app_metadata.providers.includes("google"));
 
-    const passwordOnly = isGoogleSession && settings.requirePasswordForGoogle;
+    // Só aplica bloqueio por senha para Google se o wizard de 1º acesso foi
+    // concluído (o wizard é onde o usuário define a senha). Sem isso, o usuário
+    // ficaria preso na tela de bloqueio sem conseguir desbloquear.
+    const googleWizardDone = !isGoogleSession || hasCompletedGoogleWizard(session.user.id);
+    const passwordOnly = isGoogleSession && settings.requirePasswordForGoogle && googleWizardDone;
+    // Se é usuário Google e o wizard ainda não foi concluído, não bloqueia;
+    // ele precisa chegar ao Dashboard para ver o wizard.
+    const lockEnabled = settings.enableAppLock && (!isGoogleSession || googleWizardDone);
 
     return {
-      lockEnabled: settings.enableAppLock,
+      lockEnabled,
       passwordOnly,
       allowBiometric: settings.allowBiometricUnlock && !passwordOnly,
     };
