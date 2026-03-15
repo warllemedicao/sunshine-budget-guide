@@ -12,7 +12,10 @@ const AppLayout = () => {
 
   useEffect(() => {
     if (!sharedFile) return;
-    if (location.pathname !== "/") navigate("/");
+    if (location.pathname !== "/") {
+      navigate("/", { replace: true });
+      return;
+    }
     setShowModal(true);
   }, [sharedFile, location.pathname, navigate]);
 

@@ -17,7 +17,7 @@ import { useToast } from "@/hooks/use-toast";
 import { ToastAction } from "@/components/ui/toast";
 import {
   TrendingUp, TrendingDown, CreditCard, ShoppingBag,
-  Plus, Trash2, Edit2, Check, Undo2, Paperclip, Eye,
+  Plus, Trash2, Edit2, Check, Undo2, Paperclip, Eye, ChevronDown, ChevronUp,
 } from "lucide-react";
 import { ReceiptUploadButton } from '@/components/ReceiptUploadButton';
 import { ReceiptViewer } from '@/components/ReceiptViewer';
@@ -825,6 +825,7 @@ const Dashboard = () => {
                   onTogglePaid={() => toggleFixedExpensePaid(l.id)}
                   onClick={() => openEdit(l)}
                   onReceiptClick={() => { setReceiptLancamento(l); setShowReceiptModal(true); }}
+                  onDelete={() => deleteLancamento.mutate(l)}
                 />
               ))}
               {fixasDespesaView.length > 0 && (
@@ -1226,22 +1227,29 @@ const MiniLancamentoRow = ({
   onTogglePaid,
   onClick,
   onReceiptClick,
+  onDelete,
 }: {
   item: Tables<"lancamentos">;
   isPaid?: boolean;
   onTogglePaid?: () => void;
   onClick: () => void;
   onReceiptClick?: () => void;
+  onDelete?: () => void;
 }) => {
   const cat = getCategoriaInfo(item.categoria);
   const Icon = cat.icon;
   const hasReceipt = !!getDbComprovanteUrl(item) || !!getLocalReceipt(`${LANCAMENTO_RECEIPT_KEY}${item.id}`);
+  const [expanded, setExpanded] = useState(false);
+  const displayDate = new Date((item.data_compra ?? item.data) + "T00:00:00").toLocaleDateString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+  });
   return (
     <div className={cn(
-      "flex w-full items-center gap-2 rounded-lg p-2 border hover:shadow-sm transition-shadow",
+      "w-full rounded-lg p-2 border transition-shadow",
       isPaid ? "bg-success/10 border-success/40" : "bg-card border-border",
     )}>
-      <button onClick={onClick} className="flex flex-1 items-center gap-2 text-left min-w-0">
+      <button onClick={() => setExpanded((v) => !v)} className="flex w-full items-center gap-2 text-left min-w-0">
         {item.loja ? (
           <BrandLogo
             store={item.loja}
@@ -1258,31 +1266,43 @@ const MiniLancamentoRow = ({
         )}
         <div className="flex-1 min-w-0">
           <p className="text-xs font-medium truncate">{item.descricao}</p>
+          <p className="text-[10px] text-muted-foreground truncate">{displayDate} • {item.loja || cat.label}</p>
         </div>
-        <p className="text-xs font-semibold">{formatCurrency(item.valor)}</p>
+        <p className="text-xs font-semibold">{formatCurrency(Math.abs(item.valor))}</p>
+        {expanded ? <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />}
       </button>
-      {onTogglePaid && (
-        <button
-          onClick={onTogglePaid}
-          className={cn(
-            "rounded-md border px-2 py-1 text-[10px] font-semibold transition-colors",
-            isPaid
-              ? "border-success/40 bg-success/20 text-success"
-              : "border-border bg-secondary text-muted-foreground hover:text-foreground",
+      {expanded && (
+        <div className="mt-2 flex flex-wrap items-center gap-1.5 border-t border-border/60 pt-2">
+          <button onClick={onClick} className="rounded-md border border-border px-2 py-1 text-[10px] font-semibold text-muted-foreground hover:text-foreground">Abrir</button>
+          {onTogglePaid && (
+            <button
+              onClick={onTogglePaid}
+              className={cn(
+                "rounded-md border px-2 py-1 text-[10px] font-semibold transition-colors",
+                isPaid
+                  ? "border-success/40 bg-success/20 text-success"
+                  : "border-border bg-secondary text-muted-foreground hover:text-foreground",
+              )}
+              title={isPaid ? "Marcar como pendente" : "Marcar como pago"}
+            >
+              {isPaid ? "Pago" : "Pagar"}
+            </button>
           )}
-          title={isPaid ? "Marcar como pendente" : "Marcar como pago"}
-        >
-          {isPaid ? "Pago" : "Pagar"}
-        </button>
-      )}
-      {onReceiptClick && (
-        <button
-          onClick={onReceiptClick}
-          className={cn("p-1 flex-shrink-0 hover:text-foreground", hasReceipt ? "text-primary" : "text-muted-foreground")}
-          title={hasReceipt ? "Visualizar comprovante" : "Anexar comprovante"}
-        >
-          <Paperclip className="h-3 w-3" />
-        </button>
+          {onReceiptClick && (
+            <button
+              onClick={onReceiptClick}
+              className={cn("rounded-md border border-border px-2 py-1 text-[10px] font-semibold hover:text-foreground", hasReceipt ? "text-primary" : "text-muted-foreground")}
+              title={hasReceipt ? "Visualizar comprovante" : "Anexar comprovante"}
+            >
+              Anexo
+            </button>
+          )}
+          {onDelete && (
+            <button onClick={onDelete} className="rounded-md border border-destructive/40 px-2 py-1 text-[10px] font-semibold text-destructive">
+              Excluir
+            </button>
+          )}
+        </div>
       )}
     </div>
   );
@@ -1304,13 +1324,18 @@ const FixedCardExpenseRow = ({
   const cat = getCategoriaInfo(item.categoria);
   const Icon = cat.icon;
   const hasReceipt = !!getDbComprovanteUrl(item) || !!getLocalReceipt(`${LANCAMENTO_RECEIPT_KEY}${item.id}`);
+  const [expanded, setExpanded] = useState(false);
+  const displayDate = new Date((item.data_compra ?? item.data) + "T00:00:00").toLocaleDateString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+  });
 
   return (
     <div className={cn(
-      "flex items-center gap-2 rounded-md border p-2",
+      "rounded-md border p-2",
       paid ? "bg-success/10 border-success/40" : "bg-destructive/10 border-destructive/40",
     )}>
-      <button onClick={onEdit} className="flex flex-1 items-center gap-2 text-left min-w-0">
+      <button onClick={() => setExpanded((v) => !v)} className="flex w-full items-center gap-2 text-left min-w-0">
         {item.loja ? (
           <BrandLogo
             store={item.loja}
@@ -1328,26 +1353,32 @@ const FixedCardExpenseRow = ({
 
         <div className="min-w-0 flex-1">
           <p className="text-xs font-medium truncate">{item.descricao}</p>
-          <p className="text-[10px] text-muted-foreground truncate">{item.loja || cat.label}</p>
+          <p className="text-[10px] text-muted-foreground truncate">{displayDate} • {item.loja || cat.label}</p>
         </div>
+
+        <p className={cn("text-xs font-semibold", paid ? "text-success" : "text-destructive")}>
+          {formatCurrency(Math.abs(item.valor))}
+        </p>
+        {expanded ? <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />}
       </button>
 
-      <p className={cn("text-xs font-semibold", paid ? "text-success" : "text-destructive")}>
-        {formatCurrency(item.valor)}
-      </p>
-      <button
-        onClick={onReceiptClick}
-        className={cn("p-1 hover:text-foreground", hasReceipt ? "text-primary" : "text-muted-foreground")}
-        title={hasReceipt ? "Visualizar comprovante" : "Anexar comprovante"}
-      >
-        <Paperclip className="h-3 w-3" />
-      </button>
-      <button onClick={onEdit} className="p-1 text-muted-foreground hover:text-foreground" title="Editar">
-        <Edit2 className="h-3 w-3" />
-      </button>
-      <button onClick={onDelete} className="p-1 text-muted-foreground hover:text-destructive" title="Excluir">
-        <Trash2 className="h-3 w-3" />
-      </button>
+      {expanded && (
+        <div className="mt-2 flex flex-wrap items-center gap-1.5 border-t border-border/60 pt-2">
+          <button
+            onClick={onReceiptClick}
+            className={cn("rounded-md border border-border px-2 py-1 text-[10px] font-semibold hover:text-foreground", hasReceipt ? "text-primary" : "text-muted-foreground")}
+            title={hasReceipt ? "Visualizar comprovante" : "Anexar comprovante"}
+          >
+            Anexo
+          </button>
+          <button onClick={onEdit} className="rounded-md border border-border px-2 py-1 text-[10px] font-semibold text-muted-foreground hover:text-foreground" title="Editar">
+            Editar
+          </button>
+          <button onClick={onDelete} className="rounded-md border border-destructive/40 px-2 py-1 text-[10px] font-semibold text-destructive" title="Excluir">
+            Excluir
+          </button>
+        </div>
+      )}
     </div>
   );
 };
