@@ -11,10 +11,13 @@ export const useShareTarget = () => {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (!params.has('share')) return;
+    const isShareRoute = window.location.pathname === '/share-target';
+    const hasShareFlag = params.has('share');
 
-    // Remove the ?share param from the URL without triggering a navigation
-    const cleanUrl = window.location.pathname;
+    if (!isShareRoute && !hasShareFlag) return;
+
+    // Normalize the URL without triggering a navigation.
+    const cleanUrl = '/';
     window.history.replaceState(null, '', cleanUrl);
 
     if (!('caches' in window)) return;

@@ -87,6 +87,26 @@ const resolveDefaultLaunchDate = (initialDate?: string): string => {
   }
 };
 
+const resolveCardDateForViewedInvoiceMonth = (diaFechamento: number, fallbackDate: string): string => {
+  try {
+    const raw = localStorage.getItem(DASHBOARD_VIEW_KEY);
+    if (!raw) return fallbackDate;
+    const parsed = JSON.parse(raw) as { mes?: number; ano?: number };
+    if (typeof parsed.mes !== "number" || typeof parsed.ano !== "number") return fallbackDate;
+
+    const invoiceYear = parsed.ano;
+    const invoiceMonth = parsed.mes;
+    const purchaseBase = new Date(invoiceYear, invoiceMonth, 1);
+    purchaseBase.setMonth(purchaseBase.getMonth() - 1);
+
+    const lastDay = new Date(purchaseBase.getFullYear(), purchaseBase.getMonth() + 1, 0).getDate();
+    const purchaseDay = Math.min(Math.max(diaFechamento, 1), lastDay);
+    return formatLocalDate(new Date(purchaseBase.getFullYear(), purchaseBase.getMonth(), purchaseDay));
+  } catch {
+    return fallbackDate;
+  }
+};
+
 const NovoLancamentoModal = ({ open, onOpenChange, editItem, initialDate, sharedFile, onSharedFileConsumed }: Props) => {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -114,6 +134,7 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, initialDate, shared
   const [splitEnabled, setSplitEnabled] = useState(false);
   const [splitParts, setSplitParts] = useState("2");
   const [applyToAllRecurring, setApplyToAllRecurring] = useState(true);
+  const [dateWasManuallyEdited, setDateWasManuallyEdited] = useState(false);
   // Estados para comprovante
   const [receiptPath, setReceiptPath] = useState<string>('');
   const [receiptFileName, setReceiptFileName] = useState<string>('');
@@ -326,6 +347,7 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, initialDate, shared
       setSplitEnabled(false);
       setSplitParts("2");
       setApplyToAllRecurring(true);
+      setDateWasManuallyEdited(false);
     } else {
       resetForm();
     }
@@ -350,7 +372,18 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, initialDate, shared
     setSplitEnabled(false);
     setSplitParts("2");
     setApplyToAllRecurring(true);
+    setDateWasManuallyEdited(false);
   }, [initialDate]);
+
+  useEffect(() => {
+    if (!open || !!editItem || metodo !== "cartao" || !cartaoId || dateWasManuallyEdited) return;
+    const selectedCartao = cartoes.find((c) => c.id === cartaoId);
+    const diaFechamento = selectedCartao?.fechamento ?? 31;
+    const suggestedDate = resolveCardDateForViewedInvoiceMonth(diaFechamento, data);
+    if (suggestedDate !== data) {
+      setData(suggestedDate);
+    }
+  }, [open, editItem, metodo, cartaoId, dateWasManuallyEdited, cartoes, data]);
 
   const handleManualLogoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0] ?? null;
@@ -759,7 +792,15 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, initialDate, shared
             </div>
             <div className="space-y-2">
               <Label>{metodo === "cartao" ? "Data da Compra" : "Data"}</Label>
-              <Input type="date" value={data} onChange={(e) => setData(e.target.value)} required />
+              <Input
+                type="date"
+                value={data}
+                onChange={(e) => {
+                  setDateWasManuallyEdited(true);
+                  setData(e.target.value);
+                }}
+                required
+              />
               {featureSettings.showInvoicePreview && metodo === "cartao" && cartaoId && data && (() => {
                 const selectedCartao = cartoes.find((c) => c.id === cartaoId);
                 const diaFechamento = selectedCartao?.fechamento ?? 31;

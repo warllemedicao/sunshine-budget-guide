@@ -52,6 +52,7 @@ const App = () => {
               <Route path="/auth" element={<PublicRoute><Auth /></PublicRoute>} />
               <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
                 <Route path="/" element={<Suspense fallback={<div>Carregando...</div>}><Dashboard /></Suspense>} />
+                <Route path="/share-target" element={<Suspense fallback={<div>Carregando...</div>}><Dashboard /></Suspense>} />
                 <Route path="/objetivos" element={<Suspense fallback={<div>Carregando...</div>}><Objetivos /></Suspense>} />
                 <Route path="/graficos" element={<Suspense fallback={<div>Carregando...</div>}><Graficos /></Suspense>} />
                 <Route path="/perfil" element={<Suspense fallback={<div>Carregando...</div>}><Perfil /></Suspense>} />

@@ -83,15 +83,17 @@ const isUnknownColumnError = (error: unknown, column: string): boolean => {
   return e.code === "42703" && msg.includes(column.toLowerCase());
 };
 
+const getNextDashboardView = () => {
+  const next = new Date();
+  next.setMonth(next.getMonth() + 1, 1);
+  return { mes: next.getMonth(), ano: next.getFullYear() };
+};
+
 const Dashboard = () => {
   const { user } = useAuth();
   const { toast } = useToast();
   const qc = useQueryClient();
-  const initialView = useMemo(() => {
-    const d = new Date();
-    d.setMonth(d.getMonth() + 1, 1);
-    return { mes: d.getMonth(), ano: d.getFullYear() };
-  }, []);
+  const initialView = useMemo(() => getNextDashboardView(), []);
   const [mes, setMes] = useState(initialView.mes);
   const [ano, setAno] = useState(initialView.ano);
   const [editItem, setEditItem] = useState<Tables<"lancamentos"> | null>(null);
@@ -162,6 +164,30 @@ const Dashboard = () => {
       // ignore localStorage failures
     }
   }, [mes, ano]);
+
+  useEffect(() => {
+    const syncToNextMonth = () => {
+      const nextView = getNextDashboardView();
+      setMes(nextView.mes);
+      setAno(nextView.ano);
+      setExpandedCard(null);
+    };
+
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        syncToNextMonth();
+      }
+    };
+
+    syncToNextMonth();
+    window.addEventListener("pageshow", syncToNextMonth);
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    return () => {
+      window.removeEventListener("pageshow", syncToNextMonth);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  }, []);
 
   const defaultLaunchDate = useMemo(() => {
     const now = new Date();
