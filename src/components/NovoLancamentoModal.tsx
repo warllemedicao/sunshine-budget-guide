@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -50,13 +50,44 @@ interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   editItem?: Tables<"lancamentos"> | null;
+  /** Optional date prefill for new entries (YYYY-MM-DD). */
+  initialDate?: string;
   /** File shared from an external app (e.g. bank payment receipt). Auto-uploaded when the modal opens. */
   sharedFile?: File | null;
   /** Called after the shared file has been processed so the parent can clear it. */
   onSharedFileConsumed?: () => void;
 }
 
-const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onSharedFileConsumed }: Props) => {
+const DASHBOARD_VIEW_KEY = "sunshine:dashboard:view-month";
+
+const formatLocalDate = (value: Date): string => {
+  const y = value.getFullYear();
+  const m = String(value.getMonth() + 1).padStart(2, "0");
+  const d = String(value.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+};
+
+const resolveDefaultLaunchDate = (initialDate?: string): string => {
+  if (initialDate) return initialDate;
+
+  const now = new Date();
+  try {
+    const raw = localStorage.getItem(DASHBOARD_VIEW_KEY);
+    if (!raw) return formatLocalDate(now);
+    const parsed = JSON.parse(raw) as { mes?: number; ano?: number };
+    if (typeof parsed.mes !== "number" || typeof parsed.ano !== "number") return formatLocalDate(now);
+
+    const targetYear = parsed.mes === 0 ? parsed.ano - 1 : parsed.ano;
+    const targetMonth = parsed.mes === 0 ? 11 : parsed.mes - 1;
+    const lastDay = new Date(targetYear, targetMonth + 1, 0).getDate();
+    const day = Math.min(now.getDate(), lastDay);
+    return formatLocalDate(new Date(targetYear, targetMonth, day));
+  } catch {
+    return formatLocalDate(now);
+  }
+};
+
+const NovoLancamentoModal = ({ open, onOpenChange, editItem, initialDate, sharedFile, onSharedFileConsumed }: Props) => {
   const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -65,7 +96,7 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
   const [tipo, setTipo] = useState<"receita" | "despesa">("despesa");
   const [descricao, setDescricao] = useState("");
   const [valor, setValor] = useState("");
-  const [data, setData] = useState(new Date().toISOString().split("T")[0]);
+  const [data, setData] = useState(resolveDefaultLaunchDate(initialDate));
   const [categoria, setCategoria] = useState("outros");
   const [fixo, setFixo] = useState(false);
   const [metodo, setMetodo] = useState<"avista" | "cartao">("avista");
@@ -115,32 +146,6 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
     if (error) throw error;
   };
 
-  const updateLancamentosGroupWithReceiptFallback = async (
-    ids: string[],
-    basePayload: TablesInsert<"lancamentos">,
-  ) => {
-    if (ids.length === 0) return;
-
-    if (!receiptPath) {
-      const { error } = await supabase.from("lancamentos").update(basePayload).in("id", ids);
-      if (error) throw error;
-      return;
-    }
-
-    for (const col of RECEIPT_COLUMNS) {
-      const { error } = await supabase.from("lancamentos").update({
-        ...basePayload,
-        [col]: receiptPath,
-      } as never).in("id", ids);
-      if (!error) return;
-      if (isUnknownColumnError(error, col)) continue;
-      throw error;
-    }
-
-    const { error } = await supabase.from("lancamentos").update(basePayload).in("id", ids);
-    if (error) throw error;
-  };
-
   const insertLancamentosWithReceiptFallback = async (
     payload: TablesInsert<"lancamentos"> | TablesInsert<"lancamentos">[],
   ) => {
@@ -162,6 +167,53 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
 
     const { error } = await supabase.from("lancamentos").insert(payload);
     if (error) throw error;
+  };
+
+  const filterAlreadyExistingRows = async (rows: TablesInsert<"lancamentos">[]) => {
+    if (!user || rows.length === 0) return rows;
+
+    const minDate = rows.reduce((min, row) => {
+      const value = row.data_compra ?? row.data ?? "9999-12-31";
+      return value < min ? value : min;
+    }, "9999-12-31");
+    const maxDate = rows.reduce((max, row) => {
+      const value = row.data_compra ?? row.data ?? "0001-01-01";
+      return value > max ? value : max;
+    }, "0001-01-01");
+
+    const { data: existingRows, error } = await supabase
+      .from("lancamentos")
+      .select("descricao, valor, tipo, data, data_compra, cartao_id, fixa, parcela_atual, parcelas")
+      .eq("usuario_id", user.id)
+      .gte("data", minDate)
+      .lte("data", maxDate);
+
+    if (error) throw error;
+
+    const toKey = (row: {
+      descricao?: string | null;
+      valor?: number | null;
+      tipo?: string | null;
+      data?: string | null;
+      data_compra?: string | null;
+      cartao_id?: string | null;
+      fixa?: boolean | null;
+      parcela_atual?: number | null;
+      parcelas?: number | null;
+    }) => [
+      row.descricao ?? "",
+      Number(row.valor ?? 0).toFixed(2),
+      row.tipo ?? "",
+      row.data ?? "",
+      row.data_compra ?? "",
+      row.cartao_id ?? "null",
+      row.fixa ? "1" : "0",
+      row.parcela_atual ?? "null",
+      row.parcelas ?? "null",
+    ].join("|");
+
+    const existing = new Set((existingRows ?? []).map((row) => toKey(row)));
+    return rows.filter((row) => !existing.has(toKey(row)));
   };
 
   const logoSuggestions = useMemo(() => {
@@ -258,7 +310,7 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
         : editItem.descricao;
       setDescricao(baseDescricao);
       setValor(String(editItem.valor));
-      setData(editItem.data);
+      setData(editItem.data_compra ?? editItem.data);
       setCategoria(editItem.categoria);
       setFixo(editItem.fixa);
       setMetodo(editItem.cartao_id ? "cartao" : "avista");
@@ -277,13 +329,13 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
     } else {
       resetForm();
     }
-  }, [editItem, open]);
+  }, [editItem, open, initialDate, resetForm]);
 
-  const resetForm = () => {
+  const resetForm = useCallback(() => {
     setTipo("despesa");
     setDescricao("");
     setValor("");
-    setData(new Date().toISOString().split("T")[0]);
+    setData(resolveDefaultLaunchDate(initialDate));
     setCategoria("outros");
     setFixo(false);
     setMetodo("avista");
@@ -298,7 +350,7 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
     setSplitEnabled(false);
     setSplitParts("2");
     setApplyToAllRecurring(true);
-  };
+  }, [initialDate]);
 
   const handleManualLogoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0] ?? null;
@@ -362,7 +414,7 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
       }
 
       if (featureSettings.blockDuplicateTransactions && user?.id) {
-        const dataReferencia = metodoEfetivo === "cartao" ? data : data;
+        const dataReferencia = data;
         let duplicateQuery = supabase
           .from("lancamentos")
           .select("id")
@@ -370,11 +422,13 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
           .eq("descricao", descricao)
           .eq("valor", valorEfetivo)
           .eq("tipo", tipoEfetivo)
+          .eq("categoria", categoria)
+          .eq("fixa", fixaEfetiva)
           .limit(1);
 
         duplicateQuery = metodoEfetivo === "cartao"
-          ? duplicateQuery.eq("data_compra", dataReferencia)
-          : duplicateQuery.eq("data", dataReferencia);
+          ? duplicateQuery.eq("data_compra", dataReferencia).eq("cartao_id", cartaoId || null)
+          : duplicateQuery.eq("data", dataReferencia).is("cartao_id", null);
 
         if (editItem?.id) {
           duplicateQuery = duplicateQuery.neq("id", editItem.id);
@@ -418,9 +472,11 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
       if (editItem) {
         // For card purchases, recalculate the effective invoice date from the user-chosen date.
         let effectiveDataEdit = data;
+        const selectedCartao = metodoEfetivo === "cartao"
+          ? cartoes.find((c) => c.id === cartaoId)
+          : null;
+        const diaFechamento = selectedCartao?.fechamento ?? 31;
         if (metodoEfetivo === "cartao" && cartaoId) {
-          const selectedCartao = cartoes.find((c) => c.id === cartaoId);
-          const diaFechamento = selectedCartao?.fechamento ?? 31;
           effectiveDataEdit = getEffectiveInvoiceDate(data, diaFechamento);
         }
 
@@ -440,21 +496,34 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
         if (editItem.fixa && editItem.recorrencia_id && (!featureSettings.enableRecurringEditScope || applyToAllRecurring)) {
           const { data: groupRows, error: groupError } = await supabase
             .from("lancamentos")
-            .select("id")
+            .select("id, data_compra")
             .eq("usuario_id", user.id)
             .eq("recorrencia_id", editItem.recorrencia_id);
           if (groupError) throw groupError;
 
-          const ids = (groupRows ?? []).map((row) => row.id);
-          await updateLancamentosGroupWithReceiptFallback(ids, updatePayload);
+          const rows = groupRows ?? [];
+          if (rows.length === 0) {
+            await updateLancamentoWithReceiptFallback(editItem.id, updatePayload);
+          } else {
+            for (const row of rows) {
+              const purchaseDate = row.data_compra ?? data;
+              const effectiveDate = metodoEfetivo === "cartao"
+                ? getEffectiveInvoiceDate(purchaseDate, diaFechamento)
+                : purchaseDate;
+              await updateLancamentoWithReceiptFallback(row.id, {
+                ...updatePayload,
+                data_compra: purchaseDate,
+                data: effectiveDate,
+              });
+            }
+          }
         } else {
           await updateLancamentoWithReceiptFallback(editItem.id, updatePayload);
         }
       } else if (fixaEfetiva) {
-        // Fixed entries: repeat from current month through December.
+        // Fixed entries: create a rolling year from the chosen month.
         const recorrenciaId = crypto.randomUUID();
         const baseDate = new Date(data + "T00:00:00");
-        const endMonth = 11; // December
         const inserts: TablesInsert<"lancamentos">[] = [];
 
         const selectedCartao = metodoEfetivo === "cartao"
@@ -462,9 +531,12 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
           : null;
         const diaFechamento = selectedCartao?.fechamento ?? 31;
 
-        for (let m = baseDate.getMonth(); m <= endMonth; m++) {
-          const compraDate = new Date(baseDate.getFullYear(), m, baseDate.getDate());
-          const compraDateIso = compraDate.toISOString().split("T")[0];
+        for (let i = 0; i < 12; i++) {
+          const target = new Date(baseDate.getFullYear(), baseDate.getMonth() + i, 1);
+          const lastDay = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate();
+          const day = Math.min(baseDate.getDate(), lastDay);
+          const compraDate = new Date(target.getFullYear(), target.getMonth(), day);
+          const compraDateIso = formatLocalDate(compraDate);
           const effectiveData = metodoEfetivo === "cartao"
             ? getEffectiveInvoiceDate(compraDateIso, diaFechamento)
             : compraDateIso;
@@ -483,7 +555,11 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
             merchant_logo_url: merchantLogoUrl || null,
           });
         }
-        await insertLancamentosWithReceiptFallback(inserts);
+        const filteredInserts = await filterAlreadyExistingRows(inserts);
+        if (filteredInserts.length === 0) {
+          throw new Error("Esta recorrência já existe para os próximos meses.");
+        }
+        await insertLancamentosWithReceiptFallback(filteredInserts);
       } else if (!isReceita && metodoEfetivo === "avista" && featureSettings.enableSplitTransaction && splitEnabled && parseInt(splitParts) > 1) {
         const parts = Math.min(10, Math.max(2, parseInt(splitParts) || 2));
         const valorParcial = +(valorNum / parts).toFixed(2);
@@ -515,9 +591,10 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
         const inserts: TablesInsert<"lancamentos">[] = Array.from({ length: numParcelas }, (_, i) => {
           const d = new Date(startDate);
           d.setMonth(d.getMonth() + i);
+          const effectiveDate = formatLocalDate(d);
           return {
             usuario_id: user.id, descricao: `${descricao} (${i + 1}/${numParcelas})`,
-            valor: valorParcela, data: d.toISOString().split("T")[0],
+            valor: valorParcela, data: effectiveDate,
             data_compra: data,
             tipo: "despesa",
             categoria, fixa: false,
@@ -586,7 +663,7 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
         .eq("recorrencia_id", editItem.recorrencia_id);
       error = groupDeleteError;
 
-      if (!groupDeleteError && featureSettings.enableUndoAfterActions && (backupRows?.length ?? 0) > 0) {
+      if (!groupDeleteError && (backupRows?.length ?? 0) > 0) {
         toast({
           title: "Recorrência excluída!",
           action: (
@@ -607,7 +684,7 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
       const response = await supabase.from("lancamentos").delete().eq("id", editItem.id);
       error = response.error;
 
-      if (!response.error && featureSettings.enableUndoAfterActions) {
+      if (!response.error) {
         toast({
           title: "Excluído!",
           action: (
@@ -629,9 +706,6 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, sharedFile, onShare
       toast({ title: "Erro ao excluir", variant: "destructive" });
     } else {
       queryClient.invalidateQueries({ queryKey: ["lancamentos"] });
-      if (!featureSettings.enableUndoAfterActions) {
-        toast({ title: editItem.fixa ? "Recorrencia excluida!" : "Excluído!" });
-      }
       onOpenChange(false);
     }
     setLoading(false);

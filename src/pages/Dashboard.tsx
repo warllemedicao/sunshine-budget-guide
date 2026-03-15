@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -23,7 +23,6 @@ import { ReceiptUploadButton } from '@/components/ReceiptUploadButton';
 import { ReceiptViewer } from '@/components/ReceiptViewer';
 import type { Tables } from "@/integrations/supabase/types";
 import { cn } from "@/lib/utils";
-import { useShareTarget } from "@/hooks/useShareTarget";
 import BrandLogo from "@/components/BrandLogo";
 import Onboarding from "@/components/Onboarding";
 import GoogleFirstAccessWizard from "@/components/GoogleFirstAccessWizard";
@@ -52,6 +51,14 @@ const getDbComprovanteUrl = (row: unknown): string | null => {
 const LANCAMENTO_RECEIPT_KEY = "receipt:lancamento:";
 const FATURA_RECEIPT_KEY = "receipt:fatura:";
 const FIXED_EXPENSE_PAID_KEY = "fixed-expense-paid:";
+const DASHBOARD_VIEW_KEY = "sunshine:dashboard:view-month";
+
+const formatLocalDate = (value: Date): string => {
+  const y = value.getFullYear();
+  const m = String(value.getMonth() + 1).padStart(2, "0");
+  const d = String(value.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+};
 
 const getLocalReceipt = (key: string): string | null => {
   try {
@@ -80,9 +87,13 @@ const Dashboard = () => {
   const { user } = useAuth();
   const { toast } = useToast();
   const qc = useQueryClient();
-  const now = new Date();
-  const [mes, setMes] = useState(now.getMonth());
-  const [ano, setAno] = useState(now.getFullYear());
+  const initialView = useMemo(() => {
+    const d = new Date();
+    d.setMonth(d.getMonth() + 1, 1);
+    return { mes: d.getMonth(), ano: d.getFullYear() };
+  }, []);
+  const [mes, setMes] = useState(initialView.mes);
+  const [ano, setAno] = useState(initialView.ano);
   const [editItem, setEditItem] = useState<Tables<"lancamentos"> | null>(null);
   const [showEdit, setShowEdit] = useState(false);
   const [expandedCard, setExpandedCard] = useState<string | null>(null);
@@ -99,8 +110,6 @@ const Dashboard = () => {
   const [advancedCategory, setAdvancedCategory] = useState<string>("all");
   const [advancedScope, setAdvancedScope] = useState<"all" | "receitas" | "despesas">("all");
   const [featureSettings, setFeatureSettings] = useState(DEFAULT_USER_FEATURE_SETTINGS);
-
-  const { sharedFile, clearSharedFile } = useShareTarget();
   const fixedExpenseStorageKey = `${FIXED_EXPENSE_PAID_KEY}${user?.id ?? "anon"}:${mes + 1}:${ano}`;
 
   useEffect(() => {
@@ -136,7 +145,7 @@ const Dashboard = () => {
     // Exibe tutorial SOMENTE quando o usuário veio do fluxo explícito de cadastro.
     // Login de conta existente jamais deve abrir este wizard.
     setShowGoogleWizard(hasPendingGoogleWizard());
-  }, [user?.id]);
+  }, [user?.id, user?.app_metadata]);
 
   useEffect(() => {
     if (!user?.id) {
@@ -145,6 +154,23 @@ const Dashboard = () => {
     }
     setFeatureSettings(readSettingsFromStorage(user.id));
   }, [user?.id]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(DASHBOARD_VIEW_KEY, JSON.stringify({ mes, ano }));
+    } catch {
+      // ignore localStorage failures
+    }
+  }, [mes, ano]);
+
+  const defaultLaunchDate = useMemo(() => {
+    const now = new Date();
+    const targetYear = mes === 0 ? ano - 1 : ano;
+    const targetMonth = mes === 0 ? 11 : mes - 1;
+    const lastDay = new Date(targetYear, targetMonth + 1, 0).getDate();
+    const day = Math.min(now.getDate(), lastDay);
+    return formatLocalDate(new Date(targetYear, targetMonth, day));
+  }, [mes, ano]);
 
   const toggleFixedExpensePaid = (lancamentoId: string) => {
     setFixedExpensePaidMap((prev) => {
@@ -157,14 +183,6 @@ const Dashboard = () => {
       return next;
     });
   };
-
-  // Auto-open the new transaction modal when the app receives a shared receipt
-  useEffect(() => {
-    if (sharedFile && user) {
-      setEditItem(null);
-      setShowEdit(true);
-    }
-  }, [sharedFile, user]);
 
   const startDate = `${ano}-${String(mes + 1).padStart(2, "0")}-01`;
   const endDate = mes === 11 ? `${ano + 1}-01-01` : `${ano}-${String(mes + 2).padStart(2, "0")}-01`;
@@ -217,23 +235,20 @@ const Dashboard = () => {
     const receitas = lancamentos.filter((l) => isReceitaLancamento(l));
     const despesas = lancamentos.filter((l) => !isReceitaLancamento(l));
     const totalReceita = receitas.reduce((s, l) => s + Math.abs(l.valor), 0);
-    const totalDespesa = despesas
-      .filter((l) => featureSettings.excludeFixedCardFromTotals ? !(l.fixa && !!l.cartao_id) : true)
-      .reduce((s, l) => s + Math.abs(l.valor), 0);
+    const totalDespesa = despesas.reduce((s, l) => s + Math.abs(l.valor), 0);
     const fixasReceita = receitas.filter((l) => l.fixa && !l.cartao_id);
     const variaveisReceita = receitas.filter((l) => !l.fixa && !l.cartao_id);
     const fixasDespesa = despesas.filter((l) => l.fixa && !l.cartao_id);
     const cartaoIds = new Set(cartoes.map((c) => c.id));
     const fixasCartao = despesas.filter((l) => l.fixa && !!l.cartao_id && cartaoIds.has(l.cartao_id));
-    // Only include variable card expenses that are linked to an existing card
-    const cartaoLanc = despesas.filter((l) => !l.fixa && !!l.cartao_id && cartaoIds.has(l.cartao_id));
+    const cartaoTodos = despesas.filter((l) => !!l.cartao_id && cartaoIds.has(l.cartao_id));
     const variaveis = despesas.filter((l) => !l.fixa && !l.cartao_id);
     // Orphaned: has cartao_id but no valid card
     const orfaos = cartoesLoaded
       ? despesas.filter((l) => !!l.cartao_id && !cartaoIds.has(l.cartao_id))
       : [];
-    return { totalReceita, totalDespesa, fixasReceita, variaveisReceita, fixasDespesa, fixasCartao, cartaoLanc, variaveis, orfaos };
-  }, [lancamentos, cartoes, cartoesLoaded, featureSettings.excludeFixedCardFromTotals]);
+    return { totalReceita, totalDespesa, fixasReceita, variaveisReceita, fixasDespesa, fixasCartao, cartaoTodos, variaveis, orfaos };
+  }, [lancamentos, cartoes, cartoesLoaded]);
 
   const saldo = stats.totalReceita - stats.totalDespesa;
   const pctGasto = stats.totalReceita > 0
@@ -255,17 +270,17 @@ const Dashboard = () => {
       groups.set(c.id, { cartao: c, total: 0, pago: fatura?.status === "pago", fatura: fatura ?? null, compras: [] });
     });
 
-    stats.cartaoLanc.forEach((l) => {
+    stats.cartaoTodos.forEach((l) => {
       if (!l.cartao_id) return;
       const g = groups.get(l.cartao_id);
       if (g) {
-        g.total += l.valor;
+        g.total += Math.abs(l.valor);
         g.compras.push(l);
       }
     });
 
     return Array.from(groups.values());
-  }, [stats.cartaoLanc, cartoes, faturas]);
+  }, [stats.cartaoTodos, cartoes, faturas]);
 
   const fixasCartaoGroups = useMemo(() => {
     const groups = new Map<string, { cartao: Tables<"cartoes">; pago: boolean; itens: Tables<"lancamentos">[] }>();
@@ -333,33 +348,32 @@ const Dashboard = () => {
     },
     onSuccess: ({ deletedCount, backupRows }) => {
       qc.invalidateQueries({ queryKey: ["lancamentos"] });
-      if ((deletedCount ?? 1) === 999) {
-        toast({ title: "Recorrencia fixa removida!" });
-      } else if ((deletedCount ?? 1) > 1) {
-        toast({ title: `${deletedCount} parcelas removidas!` });
+      if ((backupRows?.length ?? 0) > 0) {
+        const title = (deletedCount ?? 1) === 999
+          ? "Recorrência fixa removida!"
+          : (deletedCount ?? 1) > 1
+            ? `${deletedCount} lançamento(s) removido(s)!`
+            : "Compra removida!";
+        toast({
+          title,
+          description: "Você pode desfazer esta ação.",
+          action: (
+            <ToastAction
+              altText="Desfazer"
+              onClick={async () => {
+                const { error } = await supabase.from("lancamentos").insert((backupRows ?? []) as never);
+                if (!error) {
+                  qc.invalidateQueries({ queryKey: ["lancamentos"] });
+                  toast({ title: "Exclusão desfeita!" });
+                }
+              }}
+            >
+              Desfazer
+            </ToastAction>
+          ),
+        });
       } else {
-        if (featureSettings.enableUndoAfterActions && backupRows.length === 1) {
-          toast({
-            title: "Compra removida!",
-            description: "Você pode desfazer esta ação.",
-            action: (
-              <ToastAction
-                altText="Desfazer"
-                onClick={async () => {
-                  const { error } = await supabase.from("lancamentos").insert(backupRows[0] as never);
-                  if (!error) {
-                    qc.invalidateQueries({ queryKey: ["lancamentos"] });
-                    toast({ title: "Exclusão desfeita!" });
-                  }
-                }}
-              >
-                Desfazer
-              </ToastAction>
-            ),
-          });
-        } else {
-          toast({ title: "Compra removida!" });
-        }
+        toast({ title: "Compra removida!" });
       }
     },
     onError: (err: unknown) => {
@@ -391,7 +405,7 @@ const Dashboard = () => {
   // imediatamente no render, causando ReferenceError se a const vier depois.
   const hasReceipt = (l: Tables<"lancamentos">) => !!getDbComprovanteUrl(l) || !!getLocalReceipt(`${LANCAMENTO_RECEIPT_KEY}${l.id}`);
 
-  const applyDisplayFilters = (items: Tables<"lancamentos">[]) => {
+  const applyDisplayFilters = useCallback((items: Tables<"lancamentos">[]) => {
     const term = searchTerm.trim().toLowerCase();
     return items.filter((item) => {
       if (term.length > 0) {
@@ -414,7 +428,7 @@ const Dashboard = () => {
       }
       return true;
     });
-  };
+  }, [searchTerm, quickFilter, featureSettings.enableAdvancedFilters, advancedCategory, advancedScope]);
 
   const closingAlerts = useMemo(() => {
     const today = new Date();
@@ -472,11 +486,11 @@ const Dashboard = () => {
     }
   }, [user?.id]);
 
-  const fixasReceitaView = useMemo(() => applyDisplayFilters(stats.fixasReceita), [stats.fixasReceita, searchTerm, quickFilter]);
-  const variaveisReceitaView = useMemo(() => applyDisplayFilters(stats.variaveisReceita), [stats.variaveisReceita, searchTerm, quickFilter]);
-  const fixasDespesaView = useMemo(() => applyDisplayFilters(stats.fixasDespesa), [stats.fixasDespesa, searchTerm, quickFilter]);
-  const variaveisView = useMemo(() => applyDisplayFilters(stats.variaveis), [stats.variaveis, searchTerm, quickFilter]);
-  const orfaosView = useMemo(() => applyDisplayFilters(stats.orfaos), [stats.orfaos, searchTerm, quickFilter]);
+  const fixasReceitaView = useMemo(() => applyDisplayFilters(stats.fixasReceita), [stats.fixasReceita, applyDisplayFilters]);
+  const variaveisReceitaView = useMemo(() => applyDisplayFilters(stats.variaveisReceita), [stats.variaveisReceita, applyDisplayFilters]);
+  const fixasDespesaView = useMemo(() => applyDisplayFilters(stats.fixasDespesa), [stats.fixasDespesa, applyDisplayFilters]);
+  const variaveisView = useMemo(() => applyDisplayFilters(stats.variaveis), [stats.variaveis, applyDisplayFilters]);
+  const orfaosView = useMemo(() => applyDisplayFilters(stats.orfaos), [stats.orfaos, applyDisplayFilters]);
 
   return (
     <div className="mx-auto max-w-lg space-y-5 p-4 pb-8">
@@ -546,11 +560,6 @@ const Dashboard = () => {
             <span className="text-muted-foreground">{formatCurrency(stats.totalDespesa)} / {formatCurrency(stats.totalReceita)}</span>
           </div>
           <Progress value={pctGasto} className="mt-2 h-2" />
-          {featureSettings.excludeFixedCardFromTotals && stats.fixasCartao.length > 0 && (
-            <p className="mt-2 text-[11px] text-muted-foreground">
-              Despesas fixas no cartão são exibidas separadamente e não entram neste total.
-            </p>
-          )}
         </CardContent>
       </Card>
 
@@ -628,7 +637,7 @@ const Dashboard = () => {
           <CardContent className="p-3 space-y-1">
             <p className="text-xs font-semibold uppercase text-muted-foreground">Insights</p>
             <p className="text-sm">Maior gasto do mês: {stats.variaveis.concat(stats.fixasDespesa).length > 0 ? formatCurrency(Math.max(...stats.variaveis.concat(stats.fixasDespesa).map((l) => l.valor))) : formatCurrency(0)}</p>
-            <p className="text-xs text-muted-foreground">Entradas: {stats.fixasReceita.length + stats.variaveisReceita.length} · Saídas: {stats.fixasDespesa.length + stats.variaveis.length + stats.cartaoLanc.length}</p>
+            <p className="text-xs text-muted-foreground">Entradas: {stats.fixasReceita.length + stats.variaveisReceita.length} · Saídas: {stats.fixasDespesa.length + stats.variaveis.length + stats.cartaoTodos.length}</p>
           </CardContent>
         </Card>
       )}
@@ -669,10 +678,35 @@ const Dashboard = () => {
                   variant="outline"
                   onClick={async () => {
                     const ids = variaveisView.map((l) => l.id);
+                    const { data: backupRows, error: backupError } = await supabase.from("lancamentos").select("*").in("id", ids);
+                    if (backupError) {
+                      toast({ title: "Erro", description: backupError.message, variant: "destructive" });
+                      return;
+                    }
                     const { error } = await supabase.from("lancamentos").delete().in("id", ids);
                     if (!error) {
                       qc.invalidateQueries({ queryKey: ["lancamentos"] });
-                      toast({ title: `${ids.length} lançamento(s) variável(is) removido(s)!` });
+                      toast({
+                        title: `${ids.length} lançamento(s) variável(is) removido(s)!`,
+                        description: "Você pode desfazer esta ação.",
+                        action: (
+                          <ToastAction
+                            altText="Desfazer"
+                            onClick={async () => {
+                              if ((backupRows?.length ?? 0) === 0) return;
+                              const { error: undoErr } = await supabase.from("lancamentos").insert((backupRows ?? []) as never);
+                              if (!undoErr) {
+                                qc.invalidateQueries({ queryKey: ["lancamentos"] });
+                                toast({ title: "Exclusão em lote desfeita!" });
+                              }
+                            }}
+                          >
+                            Desfazer
+                          </ToastAction>
+                        ),
+                      });
+                    } else {
+                      toast({ title: "Erro", description: error.message, variant: "destructive" });
                     }
                   }}
                 >
@@ -685,10 +719,35 @@ const Dashboard = () => {
                   variant="outline"
                   onClick={async () => {
                     const ids = orfaosView.map((l) => l.id);
+                    const { data: backupRows, error: backupError } = await supabase.from("lancamentos").select("*").in("id", ids);
+                    if (backupError) {
+                      toast({ title: "Erro", description: backupError.message, variant: "destructive" });
+                      return;
+                    }
                     const { error } = await supabase.from("lancamentos").delete().in("id", ids);
                     if (!error) {
                       qc.invalidateQueries({ queryKey: ["lancamentos"] });
-                      toast({ title: `${ids.length} órfão(s) removido(s)!` });
+                      toast({
+                        title: `${ids.length} órfão(s) removido(s)!`,
+                        description: "Você pode desfazer esta ação.",
+                        action: (
+                          <ToastAction
+                            altText="Desfazer"
+                            onClick={async () => {
+                              if ((backupRows?.length ?? 0) === 0) return;
+                              const { error: undoErr } = await supabase.from("lancamentos").insert((backupRows ?? []) as never);
+                              if (!undoErr) {
+                                qc.invalidateQueries({ queryKey: ["lancamentos"] });
+                                toast({ title: "Exclusão em lote desfeita!" });
+                              }
+                            }}
+                          >
+                            Desfazer
+                          </ToastAction>
+                        ),
+                      });
+                    } else {
+                      toast({ title: "Erro", description: error.message, variant: "destructive" });
                     }
                   }}
                 >
@@ -1037,8 +1096,7 @@ const Dashboard = () => {
         open={showEdit}
         onOpenChange={setShowEdit}
         editItem={editItem}
-        sharedFile={sharedFile}
-        onSharedFileConsumed={clearSharedFile}
+        initialDate={defaultLaunchDate}
       />
 
       {/* Modal Comprovante Despesa Fixa */}

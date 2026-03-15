@@ -42,6 +42,13 @@ const jsonResponse = (body: unknown, status = 200): Response =>
     headers: { "Content-Type": "application/json" },
   });
 
+const formatLocalDate = (value: Date): string => {
+  const y = value.getFullYear();
+  const m = String(value.getMonth() + 1).padStart(2, "0");
+  const d = String(value.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+};
+
 const toE164 = (raw: string | null | undefined): string | null => {
   if (!raw) return null;
   const digits = raw.replace(/\D/g, "");
@@ -49,7 +56,7 @@ const toE164 = (raw: string | null | undefined): string | null => {
   return `+${digits}`;
 };
 
-const todayIso = (): string => new Date().toISOString().slice(0, 10);
+const todayIso = (): string => formatLocalDate(new Date());
 
 const normalize = (value: string): string =>
   value
@@ -60,7 +67,18 @@ const normalize = (value: string): string =>
 const shiftDate = (days: number): string => {
   const d = new Date();
   d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
+  return formatLocalDate(d);
+};
+
+const getEffectiveInvoiceDate = (purchaseDateStr: string, diaFechamento: number): string => {
+  const purchaseDate = new Date(`${purchaseDateStr}T00:00:00`);
+  if (Number.isNaN(purchaseDate.getTime())) return purchaseDateStr;
+  if (purchaseDate.getDate() >= diaFechamento) {
+    const next = new Date(purchaseDate);
+    next.setMonth(next.getMonth() + 1);
+    return formatLocalDate(next);
+  }
+  return purchaseDateStr;
 };
 
 const parseDate = (text: string): string => {
@@ -76,9 +94,9 @@ const parseDate = (text: string): string => {
     const now = new Date();
     const year = now.getFullYear();
     const month = now.getMonth();
-    const candidate = new Date(Date.UTC(year, month, day));
+    const candidate = new Date(year, month, day);
     if (!Number.isNaN(candidate.getTime()) && day >= 1 && day <= 31) {
-      return candidate.toISOString().slice(0, 10);
+      return formatLocalDate(candidate);
     }
   }
 
@@ -94,8 +112,8 @@ const parseDate = (text: string): string => {
     return todayIso();
   }
 
-  const date = new Date(Date.UTC(year, month - 1, day));
-  return date.toISOString().slice(0, 10);
+  const date = new Date(year, month - 1, day);
+  return formatLocalDate(date);
 };
 
 const parseAmount = (text: string): number | null => {
@@ -133,7 +151,7 @@ const detectTipo = (text: string): "despesa" | "receita" => {
   if (receitaHints.some((k) => normalizedText.includes(normalize(k)))) return "receita";
   if (despesaHints.some((k) => normalizedText.includes(normalize(k)))) return "despesa";
   if (/\+\s*\d/.test(normalizedText)) return "receita";
-  if (/\-\s*\d/.test(normalizedText)) return "despesa";
+  if (/-\s*\d/.test(normalizedText)) return "despesa";
   return "despesa";
 };
 
@@ -275,17 +293,17 @@ const detectFallbackLoja = (text: string): string | null => {
   return titleCase(clipped);
 };
 
-const detectCardId = async (usuarioId: string, text: string): Promise<string | null> => {
+const detectCard = async (usuarioId: string, text: string): Promise<{ id: string; fechamento: number } | null> => {
   const normalizedText = normalize(text);
   const { data: cards, error } = await supabase
     .from("cartoes")
-    .select("id, nome")
+    .select("id, nome, fechamento")
     .eq("usuario_id", usuarioId);
 
   if (error || !cards?.length) return null;
 
   const byFullName = cards.find((c) => normalizedText.includes(normalize(c.nome)));
-  if (byFullName) return byFullName.id;
+  if (byFullName) return { id: byFullName.id, fechamento: byFullName.fechamento ?? 31 };
 
   for (const card of cards) {
     const tokens = normalize(card.nome)
@@ -294,7 +312,7 @@ const detectCardId = async (usuarioId: string, text: string): Promise<string | n
       .filter((t) => t.length >= 4);
 
     if (tokens.some((t) => normalizedText.includes(t))) {
-      return card.id;
+      return { id: card.id, fechamento: card.fechamento ?? 31 };
     }
   }
 
@@ -424,9 +442,18 @@ Deno.serve(async (req: Request) => {
         continue;
       }
 
-      const cardId = parsed.tipo === "despesa" && parsed.isCartao
-        ? await detectCardId(linkedUser.usuario_id, textBody)
+      const { data: duplicated } = await supabase
+        .from("whatsapp_inbound_logs")
+        .select("id")
+        .eq("provider_message_id", providerMessageId)
+        .maybeSingle();
+      if (duplicated?.id) continue;
+
+      const card = parsed.tipo === "despesa" && parsed.isCartao
+        ? await detectCard(linkedUser.usuario_id, textBody)
         : null;
+      const cardId = card?.id ?? null;
+      const effectiveData = cardId ? getEffectiveInvoiceDate(parsed.data, card?.fechamento ?? 31) : parsed.data;
 
       const { data: lancamento, error: insertError } = await supabase
         .from("lancamentos")
@@ -434,7 +461,7 @@ Deno.serve(async (req: Request) => {
           usuario_id: linkedUser.usuario_id,
           descricao: parsed.descricao,
           valor: parsed.valor,
-          data: parsed.data,
+          data: effectiveData,
           data_compra: parsed.data,
           tipo: parsed.tipo,
           categoria: parsed.categoria,
