@@ -65,15 +65,15 @@ export const ReceiptUploadButton = ({ onUploadSuccess }: ReceiptUploadButtonProp
 
   return (
     <div className="flex flex-col gap-2 p-3 bg-gray-50 rounded-lg border border-gray-200">
-      <p className="text-xs text-muted-foreground">Destino: Google Drive (sem uso de armazenamento do Supabase).</p>
+      <p className="text-xs text-muted-foreground">Envio de comprovante habilitado.</p>
       {!isGoogleSession && (
-        <p className="text-[11px] text-destructive">
-          Entre com conta Google para enviar comprovantes.
+        <p className="text-[11px] text-muted-foreground">
+          O arquivo sera salvo com seguranca no armazenamento do app.
         </p>
       )}
       {isGoogleSession && (
         <p className="text-[11px] text-muted-foreground">
-          Imagens serao compactadas automaticamente antes do upload para economizar espaco.
+          Quando disponivel, o app usa Google Drive; se nao, salva no armazenamento do app.
         </p>
       )}
       <input
