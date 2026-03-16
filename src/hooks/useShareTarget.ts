@@ -1,4 +1,3 @@
-import { registerPlugin } from '@capacitor/core';
 import { useEffect, useRef, useState } from 'react';
 
 const SHARE_CACHE = 'share-target-v1';
@@ -18,7 +17,6 @@ interface ShareReceiverPlugin {
   ): Promise<{ remove: () => Promise<void> }>;
 }
 
-const ShareReceiver = registerPlugin<ShareReceiverPlugin>('ShareReceiver');
 
 const decodeBase64ToFile = (payload: NativeSharedFilePayload): File => {
   const binary = window.atob(payload.base64Data);
@@ -74,6 +72,8 @@ export const useShareTarget = () => {
 
     const setupNativeShareListener = async () => {
       try {
+        const { registerPlugin } = await import('@capacitor/core');
+        const ShareReceiver = registerPlugin<ShareReceiverPlugin>('ShareReceiver');
         const pending = await ShareReceiver.getPendingShare();
         applyNativeSharedFile(pending.file);
 
