@@ -1,4 +1,5 @@
 import { getEffectiveInvoiceDate } from "./billingDate";
+import { addMonths } from "date-fns";
 import type { TablesInsert } from "@/integrations/supabase/types";
 
 export const RECEIPT_COLUMNS = [
@@ -58,9 +59,11 @@ export function buildParcelamentoLancamentos(args: BuildParcelamentoArgs): Table
   const receiptValue = receiptUrl ?? null;
 
   return Array.from({ length: numParcelas }, (_, i) => {
-    const compraDate = new Date(dataCompra + "T00:00:00");
-    compraDate.setMonth(compraDate.getMonth() + i);
-    const compraDateIso = compraDate.toISOString().split("T")[0];
+    const compraDate = addMonths(new Date(dataCompra + "T00:00:00"), i);
+    const y = compraDate.getFullYear();
+    const m = String(compraDate.getMonth() + 1).padStart(2, "0");
+    const d = String(compraDate.getDate()).padStart(2, "0");
+    const compraDateIso = `${y}-${m}-${d}`;
     const effectiveData = getEffectiveInvoiceDate(compraDateIso, diaFechamento);
 
     return {

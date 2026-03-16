@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { addMonths } from "date-fns";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -634,9 +635,7 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, initialDate, shared
         const startDate = new Date(startDateStr + "T00:00:00");
 
         const inserts: TablesInsert<"lancamentos">[] = Array.from({ length: numParcelas }, (_, i) => {
-          const d = new Date(startDate);
-          d.setMonth(d.getMonth() + i);
-          const effectiveDate = formatLocalDate(d);
+          const effectiveDate = formatLocalDate(addMonths(startDate, i));
           return {
             usuario_id: user.id, descricao: `${descricao} (${i + 1}/${numParcelas})`,
             valor: valorParcela, data: effectiveDate,
