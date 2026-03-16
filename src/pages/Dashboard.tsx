@@ -286,11 +286,10 @@ const Dashboard = () => {
   };
 
 
-  // Group card expenses by card, including cards with no expenses
+  // Group card expenses by card and hide cards with zero invoice in the current month.
   const cartaoGroups = useMemo(() => {
     const groups = new Map<string, { cartao: Tables<"cartoes">; total: number; pago: boolean; fatura: Tables<"faturas"> | null; compras: Tables<"lancamentos">[] }>();
 
-    // Init all cards
     cartoes.forEach((c) => {
       const fatura = faturas.find((f) => f.cartao_id === c.id);
       groups.set(c.id, { cartao: c, total: 0, pago: fatura?.status === "pago", fatura: fatura ?? null, compras: [] });
@@ -305,7 +304,7 @@ const Dashboard = () => {
       }
     });
 
-    return Array.from(groups.values());
+    return Array.from(groups.values()).filter((group) => group.compras.length > 0);
   }, [stats.cartaoTodos, cartoes, faturas]);
 
   const fixasCartaoGroups = useMemo(() => {
