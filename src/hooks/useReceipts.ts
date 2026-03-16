@@ -22,7 +22,6 @@ export const useReceipts = () => {
   }, []);
 
   const setStorageProvider = useCallback((provider: ReceiptStorageProvider) => {
-    // Upload de comprovantes e sempre Google Drive para evitar consumo no Supabase.
     setStorageProviderState(provider === 'google-drive' ? 'google-drive' : 'google-drive');
   }, []);
 
@@ -35,52 +34,76 @@ export const useReceipts = () => {
     if (latestSession?.provider_token) return latestSession.provider_token;
 
     // On some auth refresh cycles, provider_token can be absent in memory.
-    await supabase.auth.refreshSession().catch(() => {
-      // If refresh fails, caller handles fallback UX.
-    });
+    await supabase.auth.refreshSession().catch(() => {});
 
     const { data: refreshed } = await supabase.auth.getSession();
     const refreshedSession = refreshed.session as { provider_token?: string | null } | null;
     return refreshedSession?.provider_token ?? null;
   }, [session]);
 
-  const uploadReceipt = async (file: File, _userId: string): Promise<string | null> => {
+  /**
+   * Uploads a file to Supabase Storage as a fallback when Google Drive is
+   * unavailable (expired token, non-Google login, or shared from a bank/other app).
+   * Files are stored under {userId}/{timestamp}_{random}.{ext} to satisfy the
+   * bucket RLS policy.
+   */
+  const uploadToSupabaseFallback = useCallback(async (file: File, userId: string): Promise<string | null> => {
+    const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
+    const safeName = `${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+    const path = `${userId}/${safeName}`;
+    const { error } = await supabase.storage
+      .from('comprovantes')
+      .upload(path, file, { contentType: file.type || 'application/octet-stream', upsert: false });
+    if (error) throw error;
+    return path;
+  }, []);
+
+  const uploadReceipt = async (file: File, userId: string): Promise<string | null> => {
     setLoading(true);
     try {
       const providers = Array.isArray(user?.app_metadata?.providers)
         ? (user?.app_metadata?.providers as string[])
         : [];
-      const hasGoogleProvider = user?.app_metadata?.provider === 'google' || providers.includes('google');
-
-      if (!hasGoogleProvider) {
-        toast({
-          title: 'Google Drive requer login Google',
-          description: 'Entre com sua conta Google para enviar comprovantes.',
-          variant: 'destructive',
-        });
-        return null;
-      }
-
-      const providerToken = await getGoogleProviderToken();
-      if (!providerToken) {
-        toast({
-          title: 'Token do Google indisponivel',
-          description: 'Reautentique com Google para continuar.',
-          variant: 'destructive',
-        });
-        return null;
-      }
+      const hasGoogleProvider =
+        user?.app_metadata?.provider === 'google' || providers.includes('google');
 
       const optimizedFile = await compressImageForUpload(file);
-      const driveFile = await uploadFileToGoogleDrive(optimizedFile, providerToken);
-      if (driveFile?.id) {
-        toast({ title: 'Comprovante enviado para o Google Drive!' });
-        return toGoogleDrivePath(driveFile.id);
+
+      // ── Try Google Drive first (only when authenticated with Google) ─────────
+      if (hasGoogleProvider) {
+        const providerToken = await getGoogleProviderToken();
+        if (providerToken) {
+          try {
+            const driveFile = await uploadFileToGoogleDrive(optimizedFile, providerToken);
+            if (driveFile?.id) {
+              toast({ title: 'Comprovante enviado para o Google Drive!' });
+              return toGoogleDrivePath(driveFile.id);
+            }
+          } catch (driveErr) {
+            const errMsg = driveErr instanceof Error ? driveErr.message : String(driveErr);
+            // 401/403 = expired/revoked token → fall through to Supabase fallback.
+            // Any other error (network, 5xx) → also fall through so the user does
+            // not lose the shared file.
+            console.warn('[useReceipts] Google Drive upload falhou, usando Supabase como fallback:', errMsg);
+          }
+        }
+        // provider_token absent (expired session, fresh login without Drive scope)
+        // → fall through to Supabase silently.
       }
+
+      // ── Fallback: Supabase Storage ───────────────────────────────────────────
+      // Handles: non-Google users, expired Google token, and files shared from
+      // any app (bank PDFs, WhatsApp, etc.) regardless of Google auth state.
+      const supabasePath = await uploadToSupabaseFallback(optimizedFile, userId);
+      if (supabasePath) {
+        toast({ title: 'Comprovante salvo!' });
+        return supabasePath;
+      }
+
       return null;
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Erro inesperado';
-      toast({ title: 'Erro', description: message, variant: 'destructive' });
+      toast({ title: 'Erro ao salvar comprovante', description: message, variant: 'destructive' });
       return null;
     } finally {
       setLoading(false);
@@ -91,7 +114,7 @@ export const useReceipts = () => {
     if (isGoogleDrivePath(path)) {
       return getGoogleDriveFileViewUrl(path);
     }
-    // Compatibilidade com comprovantes antigos salvos no Supabase.
+    // Compatibility: older receipts stored as full URLs or Supabase paths.
     if (/^https?:\/\//i.test(path)) {
       return path;
     }
