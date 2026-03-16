@@ -322,6 +322,28 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, initialDate, shared
     return () => clearTimeout(timer);
   }, [loja]);
 
+  const resetForm = useCallback(() => {
+    setTipo("despesa");
+    setDescricao("");
+    setValor("");
+    setData(resolveDefaultLaunchDate(initialDate));
+    setCategoria("outros");
+    setFixo(false);
+    setMetodo("avista");
+    setCartaoId("");
+    setTotalParcelas("1");
+    setLoja("");
+    setMerchantLogoUrl(null);
+    setMerchantId(null);
+    setUsarReservaReceita(false);
+    setReceiptPath("");
+    setReceiptFileName("");
+    setSplitEnabled(false);
+    setSplitParts("2");
+    setApplyToAllRecurring(true);
+    setDateWasManuallyEdited(false);
+  }, [initialDate]);
+
   useEffect(() => {
     if (editItem) {
       setTipo("despesa");
@@ -352,28 +374,6 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, initialDate, shared
       resetForm();
     }
   }, [editItem, open, initialDate, resetForm]);
-
-  const resetForm = useCallback(() => {
-    setTipo("despesa");
-    setDescricao("");
-    setValor("");
-    setData(resolveDefaultLaunchDate(initialDate));
-    setCategoria("outros");
-    setFixo(false);
-    setMetodo("avista");
-    setCartaoId("");
-    setTotalParcelas("1");
-    setLoja("");
-    setMerchantLogoUrl(null);
-    setMerchantId(null);
-    setUsarReservaReceita(false);
-    setReceiptPath("");
-    setReceiptFileName("");
-    setSplitEnabled(false);
-    setSplitParts("2");
-    setApplyToAllRecurring(true);
-    setDateWasManuallyEdited(false);
-  }, [initialDate]);
 
   useEffect(() => {
     if (!open || !!editItem || metodo !== "cartao" || !cartaoId || dateWasManuallyEdited) return;
