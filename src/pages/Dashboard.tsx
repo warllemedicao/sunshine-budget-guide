@@ -304,7 +304,21 @@ const Dashboard = () => {
       }
     });
 
-    return Array.from(groups.values()).filter((group) => group.compras.length > 0);
+    const result = Array.from(groups.values()).filter((group) => group.compras.length > 0);
+
+    // Parceladas primeiro (ordenadas por data_compra asc), depois avulsas (por data_compra asc)
+    result.forEach((group) => {
+      group.compras.sort((a, b) => {
+        const aParcelada = !!(a.parcela_atual && a.parcelas);
+        const bParcelada = !!(b.parcela_atual && b.parcelas);
+        if (aParcelada !== bParcelada) return aParcelada ? -1 : 1;
+        const aDate = a.data_compra ?? a.data ?? "";
+        const bDate = b.data_compra ?? b.data ?? "";
+        return aDate.localeCompare(bDate);
+      });
+    });
+
+    return result;
   }, [stats.cartaoTodos, cartoes, faturas]);
 
   const fixasCartaoGroups = useMemo(() => {
