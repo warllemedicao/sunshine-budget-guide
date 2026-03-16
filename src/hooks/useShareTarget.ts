@@ -53,6 +53,11 @@ export const useShareTarget = () => {
         await cache.delete('/shared-receipt');
 
         if (blob.size > 0) {
+          console.info("[Share target] Arquivo web carregado do cache", {
+            fileName,
+            type: blob.type,
+            size: blob.size,
+          });
           setSharedFile(new File([blob], fileName, { type: blob.type }));
         }
       } catch (err) {
@@ -64,6 +69,11 @@ export const useShareTarget = () => {
       if (!payload?.base64Data || lastNativeShareId.current === payload.id) return;
       lastNativeShareId.current = payload.id;
       try {
+        console.info("[Share target] Arquivo nativo recebido", {
+          id: payload.id,
+          name: payload.name,
+          mimeType: payload.mimeType,
+        });
         setSharedFile(decodeBase64ToFile(payload));
       } catch (err) {
         console.warn('Share target: failed to decode native shared file', err);
@@ -94,6 +104,10 @@ export const useShareTarget = () => {
     const isShareRoute = window.location.pathname === '/share-target';
     const hasShareFlag = params.has('share');
     if (isShareRoute || hasShareFlag) {
+      console.info("[Share target] URL de compartilhamento detectada", {
+        pathname: window.location.pathname,
+        hasShareFlag,
+      });
       // Normalize the URL without triggering a navigation.
       window.history.replaceState(null, '', '/');
     }

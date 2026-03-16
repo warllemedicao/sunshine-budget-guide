@@ -291,11 +291,23 @@ const NovoLancamentoModal = ({ open, onOpenChange, editItem, initialDate, shared
   // stable references; re-running on editItem changes is not needed here.
   useEffect(() => {
     if (!open || !sharedFile || !user || editItem) return;
+    console.info("[Share target] Iniciando upload do comprovante compartilhado", {
+      fileName: sharedFile.name,
+      type: sharedFile.type,
+      size: sharedFile.size,
+      userId: user.id,
+    });
     uploadReceipt(sharedFile, user.id)
       .then((path) => {
         if (path) {
+          console.info("[Share target] Comprovante compartilhado anexado ao modal", {
+            fileName: sharedFile.name,
+            path,
+          });
           setReceiptPath(path);
           setReceiptFileName(sharedFile.name);
+        } else {
+          console.warn("[Share target] Upload do comprovante compartilhado não retornou caminho");
         }
       })
       .finally(() => {

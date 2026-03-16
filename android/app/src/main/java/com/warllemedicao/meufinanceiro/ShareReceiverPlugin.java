@@ -1,5 +1,6 @@
 package com.warllemedicao.meufinanceiro;
 
+import android.content.ClipData;
 import android.content.ContentResolver;
 import android.content.Intent;
 import android.database.Cursor;
@@ -56,6 +57,7 @@ public class ShareReceiverPlugin extends Plugin {
 
         Uri fileUri = extractSharedUri(intent);
         if (fileUri == null) {
+            Log.w(TAG, "Intent de compartilhamento recebido sem URI de arquivo");
             return;
         }
 
@@ -65,6 +67,7 @@ public class ShareReceiverPlugin extends Plugin {
         }
 
         pendingShare = payload;
+        Log.i(TAG, "Arquivo compartilhado recebido: " + payload.optString("name", "comprovante"));
 
         if (notifyListeners) {
             JSObject event = new JSObject();
@@ -79,11 +82,46 @@ public class ShareReceiverPlugin extends Plugin {
             if (uris != null && !uris.isEmpty()) {
                 return uris.get(0);
             }
+
+            Uri clipUri = extractUriFromClipData(intent);
+            if (clipUri != null) {
+                return clipUri;
+            }
         }
 
         Object stream = intent.getParcelableExtra(Intent.EXTRA_STREAM);
         if (stream instanceof Uri) {
             return (Uri) stream;
+        }
+
+        Uri clipUri = extractUriFromClipData(intent);
+        if (clipUri != null) {
+            return clipUri;
+        }
+
+        if (intent.getData() != null) {
+            return intent.getData();
+        }
+
+        return null;
+    }
+
+    private Uri extractUriFromClipData(Intent intent) {
+        ClipData clipData = intent.getClipData();
+        if (clipData == null || clipData.getItemCount() == 0) {
+            return null;
+        }
+
+        for (int index = 0; index < clipData.getItemCount(); index++) {
+            ClipData.Item item = clipData.getItemAt(index);
+            if (item == null) {
+                continue;
+            }
+
+            Uri uri = item.getUri();
+            if (uri != null) {
+                return uri;
+            }
         }
 
         return null;

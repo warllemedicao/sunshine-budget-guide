@@ -12,10 +12,17 @@ const AppLayout = () => {
 
   useEffect(() => {
     if (!sharedFile) return;
+    console.info("[Share target] Arquivo disponível no layout", {
+      name: sharedFile.name,
+      type: sharedFile.type,
+      size: sharedFile.size,
+      pathname: location.pathname,
+    });
     if (location.pathname !== "/") {
       navigate("/", { replace: true });
       return;
     }
+    console.info("[Share target] Abrindo modal de novo lançamento");
     setShowModal(true);
   }, [sharedFile, location.pathname, navigate]);
 
