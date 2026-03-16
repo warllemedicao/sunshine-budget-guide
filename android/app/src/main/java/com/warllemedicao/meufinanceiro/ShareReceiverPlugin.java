@@ -6,6 +6,7 @@ import android.database.Cursor;
 import android.net.Uri;
 import android.provider.OpenableColumns;
 import android.util.Base64;
+import android.util.Log;
 
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -20,6 +21,7 @@ import java.util.ArrayList;
 
 @CapacitorPlugin(name = "ShareReceiver")
 public class ShareReceiverPlugin extends Plugin {
+    private static final String TAG = "ShareReceiverPlugin";
     private JSObject pendingShare;
 
     @Override
@@ -111,7 +113,7 @@ public class ShareReceiverPlugin extends Plugin {
             payload.put("base64Data", Base64.encodeToString(outputStream.toByteArray(), Base64.NO_WRAP));
             return payload;
         } catch (IOException exception) {
-            getLog().error("Falha ao ler arquivo compartilhado", exception);
+            Log.e(TAG, "Falha ao ler arquivo compartilhado", exception);
             return null;
         }
     }
@@ -130,7 +132,7 @@ public class ShareReceiverPlugin extends Plugin {
                 }
             }
         } catch (Exception exception) {
-            getLog().warn("Falha ao resolver nome do arquivo compartilhado", exception);
+            Log.w(TAG, "Falha ao resolver nome do arquivo compartilhado", exception);
         }
 
         String fallback = fileUri.getLastPathSegment();
