@@ -23,9 +23,18 @@ const Chat = lazy(() => import("@/pages/Chat"));
 
 const queryClient = new QueryClient();
 
+const BootFallback = () => (
+  <div className="min-h-screen bg-[hsl(243,75%,20%)] text-white flex items-center justify-center px-6">
+    <div className="text-center">
+      <p className="text-lg font-semibold">Carregando o app...</p>
+      <p className="mt-2 text-sm text-white/70">Preparando sua sessao e restaurando o ultimo estado.</p>
+    </div>
+  </div>
+);
+
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, loading, locked, unlock, passwordOnlyLock, allowBiometricUnlock } = useAuth();
-  if (loading) return null;
+  if (loading) return <BootFallback />;
   if (!user) return <Navigate to="/auth" replace />;
   if (locked) return <AppLockScreen userEmail={user.email ?? ""} onUnlock={unlock} passwordOnly={passwordOnlyLock} allowBiometricUnlock={allowBiometricUnlock} />;
   return <>{children}</>;
@@ -33,7 +42,7 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 
 const PublicRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, loading } = useAuth();
-  if (loading) return null;
+  if (loading) return <BootFallback />;
   if (user) return <Navigate to="/" replace />;
   return <>{children}</>;
 };

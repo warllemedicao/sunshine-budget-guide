@@ -1,6 +1,35 @@
-import { useEffect, useState } from 'react';
+import { registerPlugin } from '@capacitor/core';
+import { useEffect, useRef, useState } from 'react';
 
 const SHARE_CACHE = 'share-target-v1';
+
+interface NativeSharedFilePayload {
+  id: string;
+  name: string;
+  mimeType: string;
+  base64Data: string;
+}
+
+interface ShareReceiverPlugin {
+  getPendingShare(): Promise<{ file: NativeSharedFilePayload | null }>;
+  addListener(
+    eventName: 'shareIntentReceived',
+    listenerFunc: (payload: { file: NativeSharedFilePayload | null }) => void,
+  ): Promise<{ remove: () => Promise<void> }>;
+}
+
+const ShareReceiver = registerPlugin<ShareReceiverPlugin>('ShareReceiver');
+
+const decodeBase64ToFile = (payload: NativeSharedFilePayload): File => {
+  const binary = window.atob(payload.base64Data);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return new File([bytes], payload.name || 'comprovante', {
+    type: payload.mimeType || 'application/octet-stream',
+  });
+};
 
 /**
  * Detects when the app was opened via the Web Share Target API.
@@ -8,6 +37,7 @@ const SHARE_CACHE = 'share-target-v1';
  */
 export const useShareTarget = () => {
   const [sharedFile, setSharedFile] = useState<File | null>(null);
+  const lastNativeShareId = useRef<string | null>(null);
 
   useEffect(() => {
     const tryReadSharedReceipt = async () => {
@@ -32,6 +62,34 @@ export const useShareTarget = () => {
       }
     };
 
+    const applyNativeSharedFile = (payload: NativeSharedFilePayload | null) => {
+      if (!payload?.base64Data || lastNativeShareId.current === payload.id) return;
+      lastNativeShareId.current = payload.id;
+      try {
+        setSharedFile(decodeBase64ToFile(payload));
+      } catch (err) {
+        console.warn('Share target: failed to decode native shared file', err);
+      }
+    };
+
+    const setupNativeShareListener = async () => {
+      try {
+        const pending = await ShareReceiver.getPendingShare();
+        applyNativeSharedFile(pending.file);
+
+        const listener = await ShareReceiver.addListener('shareIntentReceived', ({ file }) => {
+          applyNativeSharedFile(file);
+        });
+
+        return () => {
+          void listener.remove();
+        };
+      } catch (err) {
+        console.warn('Share target: native share receiver unavailable', err);
+        return undefined;
+      }
+    };
+
     const params = new URLSearchParams(window.location.search);
     const isShareRoute = window.location.pathname === '/share-target';
     const hasShareFlag = params.has('share');
@@ -47,8 +105,14 @@ export const useShareTarget = () => {
     void tryReadSharedReceipt();
     window.addEventListener('pageshow', handlePageShow);
 
+    let cleanupNativeListener: (() => void) | undefined;
+    setupNativeShareListener().then((cleanup) => {
+      cleanupNativeListener = cleanup;
+    });
+
     return () => {
       window.removeEventListener('pageshow', handlePageShow);
+      cleanupNativeListener?.();
     };
   }, []);
 
