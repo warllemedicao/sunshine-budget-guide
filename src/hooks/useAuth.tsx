@@ -127,6 +127,21 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     });
 
     supabase.auth.getSession().then(({ data: { session } }) => {
+      // If the URL has OAuth callback params (PKCE code or implicit token), the
+      // session hasn't been extracted yet — onAuthStateChange will handle it.
+      // Calling setLoading(false) here would briefly expose the Auth page to the
+      // user before the code exchange completes, which is the root cause of the
+      // blank/white screen seen after Google login.
+      if (!session) {
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlHash = window.location.hash;
+        const hasOAuthParams =
+          urlParams.has('code') ||
+          urlHash.includes('access_token') ||
+          urlHash.includes('refresh_token');
+        if (hasOAuthParams) return;
+      }
+
       setSession(session);
       setLoading(false);
       const { lockEnabled, passwordOnly, allowBiometric } = resolveLockPreferences(session);

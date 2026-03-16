@@ -10,6 +10,7 @@ import AppLockScreen from "@/components/AppLockScreen";
 import SplashScreen from "@/components/SplashScreen";
 import Auth from "@/pages/Auth";
 import NotFound from "@/pages/NotFound";
+import { AppErrorBoundary } from "@/components/AppErrorBoundary";
 // import Dashboard from "@/pages/Dashboard";
 // import Objetivos from "@/pages/Objetivos";
 // import Graficos from "@/pages/Graficos";
@@ -51,29 +52,31 @@ const App = () => {
   const [splashDone, setSplashDone] = useState(false);
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <TooltipProvider>
-          <Toaster />
-          <Sonner />
-          {!splashDone && <SplashScreen onFinish={() => setSplashDone(true)} />}
-          <BrowserRouter>
-            <Routes>
-              <Route path="/auth" element={<PublicRoute><Auth /></PublicRoute>} />
-              <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
-                <Route path="/" element={<Suspense fallback={<div>Carregando...</div>}><Dashboard /></Suspense>} />
-                <Route path="/share-target" element={<Suspense fallback={<div>Carregando...</div>}><Dashboard /></Suspense>} />
-                <Route path="/objetivos" element={<Suspense fallback={<div>Carregando...</div>}><Objetivos /></Suspense>} />
-                <Route path="/graficos" element={<Suspense fallback={<div>Carregando...</div>}><Graficos /></Suspense>} />
-                <Route path="/perfil" element={<Suspense fallback={<div>Carregando...</div>}><Perfil /></Suspense>} />
-                <Route path="/chat" element={<Suspense fallback={<div>Carregando...</div>}><Chat /></Suspense>} />
-              </Route>
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </BrowserRouter>
-        </TooltipProvider>
-      </AuthProvider>
-    </QueryClientProvider>
+    <AppErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <TooltipProvider>
+            <Toaster />
+            <Sonner />
+            {!splashDone && <SplashScreen onFinish={() => setSplashDone(true)} />}
+            <BrowserRouter>
+              <Routes>
+                <Route path="/auth" element={<PublicRoute><Auth /></PublicRoute>} />
+                <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
+                  <Route path="/" element={<Suspense fallback={<div>Carregando...</div>}><Dashboard /></Suspense>} />
+                  <Route path="/share-target" element={<Suspense fallback={<div>Carregando...</div>}><Dashboard /></Suspense>} />
+                  <Route path="/objetivos" element={<Suspense fallback={<div>Carregando...</div>}><Objetivos /></Suspense>} />
+                  <Route path="/graficos" element={<Suspense fallback={<div>Carregando...</div>}><Graficos /></Suspense>} />
+                  <Route path="/perfil" element={<Suspense fallback={<div>Carregando...</div>}><Perfil /></Suspense>} />
+                  <Route path="/chat" element={<Suspense fallback={<div>Carregando...</div>}><Chat /></Suspense>} />
+                </Route>
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </BrowserRouter>
+          </TooltipProvider>
+        </AuthProvider>
+      </QueryClientProvider>
+    </AppErrorBoundary>
   );
 };
 
