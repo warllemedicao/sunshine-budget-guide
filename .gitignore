@@ -28,5 +28,6 @@ dist-ssr
 
 # Local Android toolchain/artifacts
 .android-sdk/
+android-sdk/
 android/local.properties
 android/.gradle/
