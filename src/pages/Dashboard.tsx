@@ -89,11 +89,28 @@ const getNextDashboardView = () => {
   return { mes: next.getMonth(), ano: next.getFullYear() };
 };
 
+const getInitialDashboardView = () => {
+  try {
+    const raw = localStorage.getItem(DASHBOARD_VIEW_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as { mes?: number; ano?: number };
+      const mes = Number(parsed.mes);
+      const ano = Number(parsed.ano);
+      if (Number.isInteger(mes) && mes >= 0 && mes <= 11 && Number.isInteger(ano) && ano >= 2000) {
+        return { mes, ano };
+      }
+    }
+  } catch {
+    // ignore localStorage failures
+  }
+  return getNextDashboardView();
+};
+
 const Dashboard = () => {
   const { user } = useAuth();
   const { toast } = useToast();
   const qc = useQueryClient();
-  const initialView = useMemo(() => getNextDashboardView(), []);
+  const initialView = useMemo(() => getInitialDashboardView(), []);
   const [mes, setMes] = useState(initialView.mes);
   const [ano, setAno] = useState(initialView.ano);
   const [editItem, setEditItem] = useState<Tables<"lancamentos"> | null>(null);
@@ -164,30 +181,6 @@ const Dashboard = () => {
       // ignore localStorage failures
     }
   }, [mes, ano]);
-
-  useEffect(() => {
-    const syncToNextMonth = () => {
-      const nextView = getNextDashboardView();
-      setMes(nextView.mes);
-      setAno(nextView.ano);
-      setExpandedCard(null);
-    };
-
-    const handleVisibility = () => {
-      if (document.visibilityState === "visible") {
-        syncToNextMonth();
-      }
-    };
-
-    syncToNextMonth();
-    window.addEventListener("pageshow", syncToNextMonth);
-    document.addEventListener("visibilitychange", handleVisibility);
-
-    return () => {
-      window.removeEventListener("pageshow", syncToNextMonth);
-      document.removeEventListener("visibilitychange", handleVisibility);
-    };
-  }, []);
 
   const defaultLaunchDate = useMemo(() => {
     const now = new Date();
