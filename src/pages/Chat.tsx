@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { Send, Bot, User } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -174,18 +174,18 @@ const SETTINGS_GUIDE =
 /* ─── component ─── */
 const Chat = () => {
   const { user } = useAuth();
-  const userId = user!.id;
+  const userId = user?.id ?? "";
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const hasInitialized = useRef(false);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const userSettings = useMemo(() => readSettingsFromStorage(userId), [userId]);
+  const userSettings = useMemo(() => readSettingsFromStorage(userId || "pending-user"), [userId]);
 
   // Initialize session scoped to the current user
   const [session, setSession] = useState<ChatSession>(() => {
-    const sessions = getSessions(userId);
+    const sessions = userId ? getSessions(userId) : [];
     const last = sessions[sessions.length - 1];
     // Reuse a session started < 2 h ago for the same user
     if (last && Date.now() - last.startedAt < SESSION_REUSE_THRESHOLD_MS) {
@@ -197,6 +197,7 @@ const Chat = () => {
   // Persist session to user-scoped localStorage key
   const saveSession = useCallback(
     (updated: ChatSession) => {
+      if (!userId) return;
       const sessions = getSessions(userId).filter((s) => s.id !== updated.id);
       saveSessions(userId, [...sessions, updated]);
     },
@@ -229,7 +230,7 @@ const Chat = () => {
       if (error) throw error;
       return data ?? [];
     },
-    enabled: false,
+    enabled: !!userId,
   });
 
   const { refetch: fetchFaturas } = useQuery({
@@ -242,12 +243,16 @@ const Chat = () => {
       if (error) throw error;
       return data ?? [];
     },
-    enabled: false,
+    enabled: !!userId,
   });
 
   /* ─── response generator ─── */
   const generateResponse = useCallback(
     async (text: string): Promise<string> => {
+      if (!userId) {
+        return "Sua sessão ainda está carregando. Tente novamente em alguns segundos.";
+      }
+
       const lower = text.toLowerCase();
       const now = new Date();
       const target = parseMonthFromText(lower, now);
