@@ -1,76 +1,45 @@
-# Welcome to your Lovable project
+# Sunshine Budget Guide (Gil Financeiro)
 
-## Project info
+Aplicativo de controle financeiro pessoal com foco em lancamentos, metas, dashboards e integracao com Supabase/Capacitor.
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
-
-## How can I edit this code?
-
-There are several ways of editing your application.
-
-**Use Lovable**
-
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
-
-Changes made via Lovable will be committed automatically to this repo.
-
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
-```
-
-**Edit a file directly in GitHub**
-
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
-
-**Use GitHub Codespaces**
-
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
-
-## What technologies are used for this project?
-
-This project is built with:
+## Stack
 
 - Vite
 - TypeScript
 - React
-- shadcn-ui
+- shadcn/ui
 - Tailwind CSS
+- Supabase
+- Capacitor (Android)
 
-## How can I deploy this project?
+## Execucao local
 
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
+Requisitos:
 
-## Can I connect a custom domain to my Lovable project?
+- Node.js 18+
+- npm
 
-Yes, you can!
+Comandos principais:
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+```sh
+npm i
+npm run dev
+```
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+Para build web:
+
+```sh
+npm run build
+npm run preview
+```
+
+## Documentacao
+
+- Esquema e estrutura de dados: `docs/SCHEMA.md`
+- OAuth Google com Capacitor: `docs/OAUTH_CAPACITOR_GOOGLE_SETUP.md`
+- Checklist de validacao OAuth: `docs/OAUTH_VALIDATION_CHECKLIST.md`
+- Setup sincronizacao WhatsApp: `docs/WHATSAPP_SYNC_SETUP.md`
+- Deploy Cloudflare Pages: `docs/CLOUDFLARE_PAGES_DEPLOY.md`
 
 ## Google OAuth + Supabase + Capacitor (APK)
 

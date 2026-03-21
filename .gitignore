@@ -23,11 +23,11 @@ dist-ssr
 *.sln
 *.sw?
 
-# Lovable
-.lovable
-
 # Local Android toolchain/artifacts
 .android-sdk/
 android-sdk/
 android/local.properties
 android/.gradle/
+
+# Local backup artifacts
+backups/
