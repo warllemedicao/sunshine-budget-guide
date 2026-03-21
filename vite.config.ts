@@ -24,4 +24,24 @@ export default defineConfig({
   optimizeDeps: {
     include: ["react", "react-dom", "@tanstack/react-query"],
   },
+  build: {
+    chunkSizeWarningLimit: 650,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return;
+
+          if (id.includes("recharts")) return "vendor-charts";
+          if (id.includes("@supabase/supabase-js")) return "vendor-supabase";
+          if (id.includes("@radix-ui") || id.includes("class-variance-authority") || id.includes("tailwind-merge")) {
+            return "vendor-ui";
+          }
+          if (id.includes("react") || id.includes("react-dom") || id.includes("react-router")) {
+            return "vendor-react";
+          }
+          if (id.includes("@tanstack/react-query")) return "vendor-query";
+        },
+      },
+    },
+  },
 });

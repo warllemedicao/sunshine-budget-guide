@@ -1,26 +1,31 @@
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
-import AppLayout from "@/components/AppLayout";
 import AppLockScreen from "@/components/AppLockScreen";
 import SplashScreen from "@/components/SplashScreen";
-import Auth from "@/pages/Auth";
-import NotFound from "@/pages/NotFound";
 import { AppErrorBoundary } from "@/components/AppErrorBoundary";
-// import Dashboard from "@/pages/Dashboard";
-// import Objetivos from "@/pages/Objetivos";
-// import Graficos from "@/pages/Graficos";
-// import Perfil from "@/pages/Perfil";
 
-const Dashboard = lazy(() => import("@/pages/Dashboard"));
-const Objetivos = lazy(() => import("@/pages/Objetivos"));
-const Graficos = lazy(() => import("@/pages/Graficos"));
-const Perfil = lazy(() => import("@/pages/Perfil"));
-const Chat = lazy(() => import("@/pages/Chat"));
+const loadAppLayout = () => import("@/components/AppLayout");
+const loadAuth = () => import("@/pages/Auth");
+const loadNotFound = () => import("@/pages/NotFound");
+const loadDashboard = () => import("@/pages/Dashboard");
+const loadObjetivos = () => import("@/pages/Objetivos");
+const loadGraficos = () => import("@/pages/Graficos");
+const loadPerfil = () => import("@/pages/Perfil");
+const loadChat = () => import("@/pages/Chat");
+
+const AppLayout = lazy(loadAppLayout);
+const Auth = lazy(loadAuth);
+const NotFound = lazy(loadNotFound);
+const Dashboard = lazy(loadDashboard);
+const Objetivos = lazy(loadObjetivos);
+const Graficos = lazy(loadGraficos);
+const Perfil = lazy(loadPerfil);
+const Chat = lazy(loadChat);
 
 const queryClient = new QueryClient();
 
@@ -31,6 +36,16 @@ const BootFallback = () => (
       <p className="mt-2 text-sm text-white/70">Preparando sua sessao e restaurando o ultimo estado.</p>
     </div>
   </div>
+);
+
+const RouteFallback = () => (
+  <div className="flex min-h-[30vh] items-center justify-center text-sm text-muted-foreground">
+    Carregando tela...
+  </div>
+);
+
+const RouteSuspense = ({ children }: { children: React.ReactNode }) => (
+  <Suspense fallback={<RouteFallback />}>{children}</Suspense>
 );
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
@@ -51,6 +66,31 @@ const PublicRoute = ({ children }: { children: React.ReactNode }) => {
 const App = () => {
   const [splashDone, setSplashDone] = useState(false);
 
+  useEffect(() => {
+    const prefetchRoutes = () => {
+      void loadDashboard();
+      void loadObjetivos();
+      void loadGraficos();
+      void loadPerfil();
+      void loadChat();
+    };
+
+    if ("requestIdleCallback" in window) {
+      const idleId = (window as Window & { requestIdleCallback: (cb: () => void, opts?: { timeout: number }) => number }).requestIdleCallback(
+        prefetchRoutes,
+        { timeout: 2500 },
+      );
+      return () => {
+        if ("cancelIdleCallback" in window) {
+          (window as Window & { cancelIdleCallback: (id: number) => void }).cancelIdleCallback(idleId);
+        }
+      };
+    }
+
+    const timeoutId = window.setTimeout(prefetchRoutes, 1200);
+    return () => window.clearTimeout(timeoutId);
+  }, []);
+
   return (
     <AppErrorBoundary>
       <QueryClientProvider client={queryClient}>
@@ -61,16 +101,16 @@ const App = () => {
             {!splashDone && <SplashScreen onFinish={() => setSplashDone(true)} />}
             <BrowserRouter>
               <Routes>
-                <Route path="/auth" element={<PublicRoute><Auth /></PublicRoute>} />
-                <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
-                  <Route path="/" element={<Suspense fallback={<div>Carregando...</div>}><Dashboard /></Suspense>} />
-                  <Route path="/share-target" element={<Suspense fallback={<div>Carregando...</div>}><Dashboard /></Suspense>} />
-                  <Route path="/objetivos" element={<Suspense fallback={<div>Carregando...</div>}><Objetivos /></Suspense>} />
-                  <Route path="/graficos" element={<Suspense fallback={<div>Carregando...</div>}><Graficos /></Suspense>} />
-                  <Route path="/perfil" element={<Suspense fallback={<div>Carregando...</div>}><Perfil /></Suspense>} />
-                  <Route path="/chat" element={<Suspense fallback={<div>Carregando...</div>}><Chat /></Suspense>} />
+                <Route path="/auth" element={<PublicRoute><RouteSuspense><Auth /></RouteSuspense></PublicRoute>} />
+                <Route element={<ProtectedRoute><RouteSuspense><AppLayout /></RouteSuspense></ProtectedRoute>}>
+                  <Route path="/" element={<RouteSuspense><Dashboard /></RouteSuspense>} />
+                  <Route path="/share-target" element={<RouteSuspense><Dashboard /></RouteSuspense>} />
+                  <Route path="/objetivos" element={<RouteSuspense><Objetivos /></RouteSuspense>} />
+                  <Route path="/graficos" element={<RouteSuspense><Graficos /></RouteSuspense>} />
+                  <Route path="/perfil" element={<RouteSuspense><Perfil /></RouteSuspense>} />
+                  <Route path="/chat" element={<RouteSuspense><Chat /></RouteSuspense>} />
                 </Route>
-                <Route path="*" element={<NotFound />} />
+                <Route path="*" element={<RouteSuspense><NotFound /></RouteSuspense>} />
               </Routes>
             </BrowserRouter>
           </TooltipProvider>
