@@ -15,7 +15,8 @@
     "preview": "vite preview",
     "preview:cloudflare": "vite preview --host 0.0.0.0 --port 8788",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "tunnel": "npx localtunnel --port 8080"
   },
   "dependencies": {
     "@capacitor/android": "^8.2.0",
